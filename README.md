@@ -10,7 +10,7 @@
 
 > 🚀 基于 Ansible 的 CDH 6.2.0 集群自动化部署工具，支持 Python 3.8+，使用软链接优化存储，一键修复常见问题，大幅提升部署效率和稳定性。
 > 
-> 🎉 **灵感来自 [playground](https://gitee.com/several-boats/playground.git)** - 交互式初始化设计，参考 `playground init` 命令实现 `make init`，一键完成环境配置。
+> 🎉 **使用 [playground](https://gitee.com/several-boats/playground.git) 项目进行环境初始化** - 使用 `playground init` 命令完成集群环境配置，包括 SSH 免密登录、系统依赖安装、环境设置等。
 
 ## 🌟 亮点功能
 
@@ -18,8 +18,8 @@
 - 🚀 **智能启停** - 自动验证配置，智能等待服务启动
 - 📦 **可靠分发** - 支持 HTTP 和手动 Parcel 分发
 - ✅ **稳定可靠** - 修复了 Agent 配置、BitTorrent 等常见问题
-- 🎨 **优雅体验** - 交互式初始化，美化的输出界面
-- 🔑 **SSH 免密登录** - 灵感来自 playground，使用 expect 自动化（必看！）
+- 🎨 **优雅体验** - 使用 playground 进行交互式初始化
+- 🔑 **SSH 免密登录** - 使用 playground 的 expect 自动化方案（必看！）
 - 📚 **完善文档** - 详细的使用和故障排查文档
 
 > 📖 **新手入门？** 查看 [⚡ 10分钟快速开始指南](QUICK_START.md)
@@ -196,7 +196,7 @@ ls -lh /opt/base_file/parcels/
    ↓
 5. 克隆项目 (git clone 或上传)
    ↓
-6. 交互式初始化 (make init) ⭐ 推荐
+6. 使用 playground 初始化 (playground init) ⭐ 必须
    ↓
 7. 一键部署 (make deploy)
    ↓
@@ -255,110 +255,133 @@ mkdir -p /root/setup_cdh_cluster
 # 使用 WinSCP 上传项目文件到 /root/setup_cdh_cluster
 ```
 
-#### 步骤 6: 交互式初始化 ⭐ 两种方式可选
+#### 步骤 6: 使用 playground 进行环境初始化 ⭐ 必须
 
-> 🎉 **新功能！**完全参考 [playground](https://gitee.com/several-boats/playground.git) 项目设计，特别是 **SSH 免密登录使用 playground 的 expect 自动化方案**
+> 🎉 **使用 [playground](https://gitee.com/several-boats/playground.git) 项目进行环境初始化**
 
-> ⚠️ **重要**: SSH 免密登录功能完全借鉴 playground 项目的 `sshFreeLogin.sh` 实现，使用 expect 工具自动化处理密码输入
+> ⚠️ **重要**: 本项目的环境初始化完全使用 playground 项目，特别是 SSH 免密登录功能
 
-##### 方式 A：使用 playground 进行初始化（推荐新手）
-
-**最简单的方式，直接使用 playground 原始工具：**
+**使用 playground 进行初始化的完整步骤：**
 
 ```bash
 # 1. 克隆 playground 项目
 cd /root
 git clone https://gitee.com/several-boats/playground.git
 
-# 如果使用 GitHub（较早版本，使用方法不同）
+# 如果 Gitee 访问慢，可以使用 GitHub（注意：版本较早，使用方法可能不同）
 # git clone https://github.com/MTlpc/automaticDeploy.git
 
-# 2. 安装 playground
+# 2. 进入目录并安装 playground
 cd playground
 chmod +x playground.sh
 ./playground.sh install
 
-# 3. 更新环境变量（$PLAY_HOME 记录脚本的安装位置）
+# 3. 更新环境变量
+# 安装后，$PLAY_HOME 环境变量记录脚本的安装位置
 source /etc/profile
 
-# 4. 运行初始化
+# 4. 运行初始化（核心步骤）
 playground init
 
-# 按提示操作：
-# - 确认集群配置 (y)
-# - 是否安装 JDK? (no) ⚠️ 重要：选择 no，JDK 已包含在 CDH 安装包中
-# - 自动配置 DNS、YUM 源、依赖、SSH 免密登录、系统环境
-# - 自动同步到所有节点
+# 按照提示操作：
+# --------------------------------
+# IP: 192.168.56.151
+# Hostname: node01
+# Username: root
+# Password: 123456
+# =======================================
+# 请确认以上信息是否正确 (y/n): y
+#
+# 是否需要安装JDK？(yes/no): no  ⚠️ 重要：必须选择 no
+# --------------------------------
 
-# 5. 初始化完成后，可以删除 playground 目录（可选）
-# cd /root
-# rm -rf playground
+# playground 会自动完成：
+# ✓ DNS 配置
+# ✓ 配置阿里云镜像源
+# ✓ 安装 expect、ntpdate 等系统依赖
+# ✓ NTP 时间同步
+# ✓ 配置 /etc/hosts
+# ✓ 关闭防火墙、SELinux
+# ✓ 配置 SSH 免密登录（使用 expect 自动化）
+# ✓ 同步到所有节点（node02、node03）
+
+# 5. 初始化完成
+# 看到以下提示表示成功：
+# ┌────────────────────────┐
+# │  环境初始化成功！      │
+# └────────────────────────┘
+
+# 6. （可选）删除 playground 目录
+cd /root
+rm -rf playground
 ```
 
-##### 方式 B：使用 make init 进行初始化（集成方案）
+**⚠️ 关键注意事项：**
 
-**集成了 playground 的优秀设计，并针对 CDH 部署优化：**
+1. **JDK 安装选择**：当询问"是否需要安装JDK？"时，**必须选择 no**
+   - 原因：JDK 已经包含在 CDH 安装包中（`/opt/base_file/packages/jdk-8u261-linux-x64.tar.gz`）
+   - 如果选择 yes，可能导致版本冲突
 
-```bash
-cd /root/setup_cdh_cluster
+2. **网络要求**：需要能访问阿里云镜像源（用于安装系统依赖）
 
-# 一键初始化（完全模仿 playground init）
-make init
+3. **初始化范围**：playground init 会自动配置所有三个节点（node01、node02、node03）
 
-# 会自动完成：
-# 1. 检查集群配置
-# 2. 检查安装包目录
-# 3. 配置 YUM 源（阿里云镜像）- 参考 playground
-# 4. 安装系统依赖（expect, ntpdate, wget, curl 等）- 参考 playground
-# 5. 安装 Python 3 和 Ansible
-# 6. 🔑 配置 SSH 免密登录（灵感来源: playground/systems/sshFreeLogin.sh）
-# 7. 配置系统环境（防火墙、SELinux、Swap、时间同步）- 参考 playground
-# 8. 运行环境测试
-# 9. 同步到其他节点（node02, node03）- 参考 playground
-```
-
-##### 🤔 选择哪种方式？
-
-| 特性 | 方式 A (playground) | 方式 B (make init) |
-|------|-------------------|-------------------|
-| 难度 | ⭐ 最简单 | ⭐⭐ 稍复杂 |
-| 稳定性 | ⭐⭐⭐ 久经考验 | ⭐⭐ 新方案 |
-| CDH 集成 | ❌ 需手动 | ✅ 自动集成 |
-| 诊断工具 | ⚠️ 基础 | ✅ 完善 |
-| 适用场景 | 快速测试 | 生产部署 |
-| 推荐人群 | 新手 | 有经验用户 |
-
-**💡 建议：**
-- 🆕 **新手或首次使用**：使用方式 A (playground)
-- 🔧 **有经验或需要诊断**：使用方式 B (make init)
-- ✅ **两种方式效果相同**，选择你熟悉的即可
-
-**交互示例：**
+**playground 初始化完整输出示例：**
 
 ```
+[root@node01 ~]# playground init
 IP: 192.168.56.151
 Hostname: node01
 Username: root
-Password: 12****56
+Password: 123456
+=======================================
+IP: 192.168.56.152
+Hostname: node02
+Username: root
+Password: 123456
+=======================================
+IP: 192.168.56.153
+Hostname: node03
+Username: root
+Password: 123456
 =======================================
 请确认以上信息是否正确 (y/n): y
+是否需要安装JDK？(yes/no): no
+skip jdk
+
+DNS配置
+nameserver已存在，跳过添加步骤！
 
 配置阿里云镜像源
 元数据缓存已建立
 expect 已安装
 ntpdate 已安装
-13 Nov 00:14:08 ntpdate: adjust time server
+13 Nov 00:14:08 ntpdate[3687]: adjust time server 84.16.73.33 offset -0.079008 sec
+
+将集群ip及其映射的hostname添加到/etc/hosts中
 关闭防火墙、SELINUX
-SSH 免密登录配置成功
 
-是否将环境配置同步到其他节点? (y/n，默认 y): y
+集群各节点之间配置SSH无密码登录
+spawn ssh-copy-id node01
+...
+Number of key(s) added: 1
+spawn ssh-copy-id node02
+...
+Number of key(s) added: 1
+spawn ssh-copy-id node03
+...
+Number of key(s) added: 1
 
-目前正在设置 node02 节点的系统环境
-目前正在设置 node03 节点的系统环境
+节点 node01 配置免密登录成功
+跳过 JDK 安装
 
-┌────────────────────────┐
-│  环境初始化成功！      │
-└────────────────────────┘
+--------------------
+|   环境初始化成功！|
+--------------------
+
+目前正在设置node01节点的系统环境
+目前正在设置node02节点的系统环境
+目前正在设置node03节点的系统环境
 ```
 
 #### 步骤 7: 一键部署
@@ -383,44 +406,6 @@ http://192.168.56.151:7180
 
 ---
 
-## 🎯 make init vs 手动配置 vs playground
-
-### 📊 对比说明
-
-| 特性 | make init（推荐）| playground init | 手动配置 |
-|------|-----------------|----------------|---------|
-| 配置方式 | 交互式 + 自动化 | 交互式 + 自动化 | 完全手动 |
-| 所需时间 | 5-10 分钟 | 5-10 分钟 | 30-60 分钟 |
-| 难度 | ⭐ 简单 | ⭐ 简单 | ⭐⭐⭐⭐ 复杂 |
-| YUM 源配置 | ✅ 自动（阿里云） | ✅ 自动（阿里云） | ❌ 需手动 |
-| 依赖安装 | ✅ 自动 | ✅ 自动 | ❌ 需手动 |
-| SSH 免密 | ✅ expect 自动化 | ✅ expect 自动化 | ❌ 需手动 |
-| 系统配置 | ✅ 全自动 | ✅ 全自动 | ❌ 需手动 |
-| 集群同步 | ✅ 自动同步 | ✅ 自动同步 | ❌ 需逐个配置 |
-| 错误处理 | ✅ 智能诊断 | ⚠️ 基础 | ❌ 自行排查 |
-| 适用场景 | CDH 集群部署 | 大数据框架安装 | 学习理解原理 |
-
-### 🌟 make init 的优势
-
-基于 **playground** 项目灵感，结合 CDH 部署特点优化：
-
-1. **🔑 SSH 免密登录（必看！）** - 完全使用 playground 的 expect 自动化方案，灵感来源于 `playground/systems/sshFreeLogin.sh`
-2. **智能配置读取** - 从 `.env` 文件读取配置，支持默认值
-3. **密码脱敏显示** - 配置展示时自动隐藏敏感信息
-4. **详细诊断工具** - YUM、SSH、环境全面诊断
-5. **Makefile 集成** - 统一命令入口，易于使用
-6. **Ansible 支持** - 后续部署更自动化
-7. **完善的日志** - 彩色输出，易于排错
-8. **集群节点同步** - 自动同步配置到所有节点（参考 playground）
-
-### 💡 使用建议
-
-- ✅ **推荐**: 使用 `make init`（快速、可靠、易用）
-- ⚠️ **可选**: 手动配置（学习理解每一步原理）
-- 📚 **参考**: playground 项目（大数据生态工具）
-
----
-
 ## 📋 集群节点信息
 
 | 角色 | IP | hostname | 说明 |
@@ -433,9 +418,9 @@ http://192.168.56.151:7180
 
 ## 🔧 环境准备（手动配置）
 
-> ⚠️ **注意**: 如果已经使用 `make init`，**无需**再进行手动配置！以下内容仅供学习参考。
+> ⚠️ **注意**: 如果已经使用 `playground init`，**无需**再进行手动配置！以下内容仅供学习参考。
 
-自动化部署前，需要完成以下手动配置（仅需一次）
+自动化部署前，如果不使用 playground，需要完成以下手动配置（仅需一次）
 
 #### 配置 hostname
 > 配置各个节点 IP 到 hostname 的映射
