@@ -3,7 +3,7 @@
 # email: liuyu1_j6go@stu.cqie.edu.cn
 # date: 2025-11-12
 
-.PHONY: help check clean deploy verify status start stop restart force-stop nodes check-nodes add-nodes fix-agent fix-all distribute-parcel start-all stop-all health ps ports logs install-ansible prepare-env fix-yum setup-python setup-ssh fix-permissions reset-mysql cleanup-copies quick-deploy full-deploy check-env health-check health-check-v2 diagnose fix-cm-mysql restart-services install-deps test test-env test-env-v2 test-full docker-build docker-up docker-down docker-logs docker-exec docker-clean env-file post-check init test-ssh check-disk show-format check-delete delall
+.PHONY: help check clean deploy verify status start stop restart force-stop nodes check-nodes add-nodes fix-agent fix-all distribute-parcel start-all stop-all health ps ports logs install-ansible prepare-env fix-yum diagnose-yum setup-python setup-ssh fix-permissions reset-mysql cleanup-copies quick-deploy full-deploy check-env health-check health-check-v2 diagnose fix-cm-mysql restart-services install-deps test test-env test-env-v2 test-full docker-build docker-up docker-down docker-logs docker-exec docker-clean env-file post-check init test-ssh check-disk show-format check-delete delall sync-nodes
 
 PROJECT_DIR := /root/setup_cdh_cluster
 INVENTORY := $(PROJECT_DIR)/ansible/node_group/hosts
@@ -21,8 +21,10 @@ help:
 	@echo "  make prepare-env     - 🚀 一键准备所有环境（自动化版本）"
 	@echo "  make setup-ssh       - 🔑 配置 SSH 免密登录"
 	@echo "  make test-ssh        - 🔍 测试 SSH 免密登录状态"
+	@echo "  make sync-nodes      - 📡 同步项目到其他节点（参考 playground）"
 	@echo "  make check-disk      - 💾 检查磁盘空间（推荐部署前运行）"
-	@echo "  make fix-yum         - 修复 YUM 源问题"
+	@echo "  make fix-yum         - 🔧 修复 YUM 源问题"
+	@echo "  make diagnose-yum    - 🔍 YUM 源诊断（网络、配置、缓存）"
 	@echo "  make setup-python    - 安装配置 Python 3 环境"
 	@echo "  make install-ansible - 安装 Ansible"
 	@echo "  make check-env       - 检查环境是否准备就绪"
@@ -157,19 +159,38 @@ test-ssh:
 	@chmod +x $(PROJECT_DIR)/scripts/test_ssh.sh
 	@$(PROJECT_DIR)/scripts/test_ssh.sh
 
+# 同步项目到其他节点（参考 playground 的 update_all）
+sync-nodes:
+	@echo "==> 同步项目到集群节点..."
+	@chmod +x $(PROJECT_DIR)/scripts/sync_to_nodes.sh
+	@$(PROJECT_DIR)/scripts/sync_to_nodes.sh
+
 # 检查磁盘空间
 check-disk:
 	@chmod +x $(PROJECT_DIR)/scripts/check_disk_space.sh
 	@$(PROJECT_DIR)/scripts/check_disk_space.sh
 
-# 修复 YUM 源
+# 修复 YUM 源（参考 playground 优化）
 fix-yum:
 	@echo "==> 修复 YUM 源..."
-	@rm -f /etc/yum.repos.d/*ansible*.repo
-	@rm -f /etc/yum.repos.d/CentOS-Ansible*.repo
-	@./scripts/fix_yum_repos.sh
-	@yum clean all
+	@chmod +x $(PROJECT_DIR)/scripts/fix_yum_repos.sh
+	@$(PROJECT_DIR)/scripts/fix_yum_repos.sh
+	@echo ""
+	@echo "==> 清理和重建 YUM 缓存..."
+	@yum clean all >/dev/null 2>&1 || true
+	@yum makecache fast 2>&1 || echo "⚠ YUM 缓存重建失败（可能是网络问题）"
+	@echo ""
 	@echo "✓ YUM 源修复完成"
+	@echo ""
+	@echo "💡 提示："
+	@echo "  如果仍有问题，运行: make diagnose-yum"
+	@echo ""
+
+# YUM 源诊断（网络、配置、缓存全面检查）
+diagnose-yum:
+	@echo "==> YUM 源诊断..."
+	@chmod +x $(PROJECT_DIR)/scripts/diagnose_yum.sh
+	@$(PROJECT_DIR)/scripts/diagnose_yum.sh
 
 # 安装配置 Python 3
 setup-python:
