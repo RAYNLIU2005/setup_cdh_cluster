@@ -255,11 +255,49 @@ mkdir -p /root/setup_cdh_cluster
 # 使用 WinSCP 上传项目文件到 /root/setup_cdh_cluster
 ```
 
-#### 步骤 6: 交互式初始化 ⭐ 灵感来自 playground
+#### 步骤 6: 交互式初始化 ⭐ 两种方式可选
 
 > 🎉 **新功能！**完全参考 [playground](https://gitee.com/several-boats/playground.git) 项目设计，特别是 **SSH 免密登录使用 playground 的 expect 自动化方案**
 
 > ⚠️ **重要**: SSH 免密登录功能完全借鉴 playground 项目的 `sshFreeLogin.sh` 实现，使用 expect 工具自动化处理密码输入
+
+##### 方式 A：使用 playground 进行初始化（推荐新手）
+
+**最简单的方式，直接使用 playground 原始工具：**
+
+```bash
+# 1. 克隆 playground 项目
+cd /root
+git clone https://gitee.com/several-boats/playground.git
+
+# 如果使用 GitHub（较早版本，使用方法不同）
+# git clone https://github.com/MTlpc/automaticDeploy.git
+
+# 2. 安装 playground
+cd playground
+chmod +x playground.sh
+./playground.sh install
+
+# 3. 更新环境变量（$PLAY_HOME 记录脚本的安装位置）
+source /etc/profile
+
+# 4. 运行初始化
+playground init
+
+# 按提示操作：
+# - 确认集群配置 (y)
+# - 是否安装 JDK? (no) ⚠️ 重要：选择 no，JDK 已包含在 CDH 安装包中
+# - 自动配置 DNS、YUM 源、依赖、SSH 免密登录、系统环境
+# - 自动同步到所有节点
+
+# 5. 初始化完成后，可以删除 playground 目录（可选）
+# cd /root
+# rm -rf playground
+```
+
+##### 方式 B：使用 make init 进行初始化（集成方案）
+
+**集成了 playground 的优秀设计，并针对 CDH 部署优化：**
 
 ```bash
 cd /root/setup_cdh_cluster
@@ -278,6 +316,22 @@ make init
 # 8. 运行环境测试
 # 9. 同步到其他节点（node02, node03）- 参考 playground
 ```
+
+##### 🤔 选择哪种方式？
+
+| 特性 | 方式 A (playground) | 方式 B (make init) |
+|------|-------------------|-------------------|
+| 难度 | ⭐ 最简单 | ⭐⭐ 稍复杂 |
+| 稳定性 | ⭐⭐⭐ 久经考验 | ⭐⭐ 新方案 |
+| CDH 集成 | ❌ 需手动 | ✅ 自动集成 |
+| 诊断工具 | ⚠️ 基础 | ✅ 完善 |
+| 适用场景 | 快速测试 | 生产部署 |
+| 推荐人群 | 新手 | 有经验用户 |
+
+**💡 建议：**
+- 🆕 **新手或首次使用**：使用方式 A (playground)
+- 🔧 **有经验或需要诊断**：使用方式 B (make init)
+- ✅ **两种方式效果相同**，选择你熟悉的即可
 
 **交互示例：**
 
