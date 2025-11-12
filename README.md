@@ -6,7 +6,6 @@
 [![Ansible](https://img.shields.io/badge/ansible-2.8+-red.svg)](https://www.ansible.com/)
 [![License](https://img.shields.io/badge/license-All%20Rights%20Reserved-lightgrey.svg)](LICENSE)
 
-**Copyright © 2025 RaynLiu - 保留所有权利 All Rights Reserved**
 
 > 🚀 基于 Ansible 的 CDH 6.2.0 集群自动化部署工具，支持 Python 3.8+，使用软链接优化存储，一键修复常见问题，大幅提升部署效率和稳定性。
 
