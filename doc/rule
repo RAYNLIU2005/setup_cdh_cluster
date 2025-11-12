@@ -1,0 +1,44 @@
+在编码时一定要仔细小心！不允许有编写错误！
+语言规则：
+回答必须使用简体中文，除非我特别明确要求你使用一些别的语言
+环境搭建与部署规则：
+根据不同的语言风格编写makefile
+在构建项目时就初步建立makefile等环境下载环境部署管理的集成脚本，为部署做准备，且简单准确，不宜复杂，搭建或者下载环境依赖时根据各个语言的风格编写环境依赖的脚本，可以结合makefile执行下载环境依赖，注意不要有编码错误
+在使用makefile时，要确保makefile的正确性，各个功能的命令模块化，并注意权限问题，避免权限错误不足
+使用 Docker 进行环境搭建时，流程合理与规范，编写 Dockerfile定义好环境依赖（语言版本、包管理器、系统库），使用 docker-compose 管理开发环境目，同时启动多个依赖，构建和运行、日志清理与版本化等可以集成到makefile中
+善用 .env 文件，避免硬编码，区分开发和部署环境，结合 Makefile 提升效率
+编写 Dockerfile —— 构建镜像的核心，定义开发环境，封装依赖
+编码规则：
+严格优化包导入的问题，避免在运行时，报错
+类的功能明确，注释标准化，不要有ai生成的痕迹，作者是RaynLiu，我的邮箱是liuyu1_j6go@stu.cqie.edu.cn
+构建完整的日志体系，一定要优化和完善日志体系，方便分析与排错，以及后期运维
+对于代码质量，代码要优雅，类与类之间要高内聚低耦合，对于可以复用的类要抽取，避免冗余，每个文件的代码量要适中，不宜太长，代码要易于维护
+工程化规则：
+各个模块的代码要模块化，职责明确高内聚，低耦合，避免冗余，每个文件的代码量要适中，不宜太长，代码要易于维护
+对于项目结构，根据项目类型，来建设项目结构，例如springboot项目，不同的业务可以放在不同的包里，但是对用公用的数据类和方法要抽取维护避免冗余代码，其他的特殊要求我在对话时我会和你提出
+对于测试首先你在生成代码时必须仔细小心，注意完善整个项目的日志输出，便于排错，测试时要保证代码的准确性，测试文件根据项目的类型的不同创建一个专用的测试文件夹，里面存放测试文件，测试文件名要简明知意，我会给你创建文件夹的权限
+在你生成md文件前请询问我，如果对上下文理解有需要那么就生成，生成时md文件时以中文命名，并且放在一个以doc命名的文件夹里，我会赋予你所最高的权限
+
+
+
+[root@node01 setup_cdh_cluster]# make stop
+==> 停止服务...
+[INFO] 停止CDH服务...
+[INFO] 停止所有节点CM Agent...
+[INFO] ✓ Agent 停止成功
+[INFO] 停止master节点服务...
+[INFO] 清理残留进程...
+./scripts/manage_cluster.sh: 行 410: 19473 已杀死               ssh node01 "pgrep -f cloudera | xargs -r kill -9 2>/dev/null; pgrep supervisord | xargs -r kill -9 2>/dev/null; true" 2> /dev/null
+node02 | FAILED | rc=-9 >>
+non-zero return code
+./scripts/manage_cluster.sh: 行 410: 19488 已杀死               ansible all_node -i ${INVENTORY} -m shell -a "pgrep -f cloudera | xargs -r kill -9 2>/dev/null || true; pgrep supervisord | xargs -r kill -9 2>/dev/null || true" 2> /dev/null
+[INFO] 重置服务状态...
+node01 | CHANGED | rc=0 >>
+
+node02 | CHANGED | rc=0 >>
+
+node03 | CHANGED | rc=0 >>
+
+[INFO] 服务停止完成
+[root@node01 setup_cdh_cluster]#
+优化集群的启停

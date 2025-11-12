@@ -1,16 +1,60 @@
 ---
 # 运行样例：ansible-playbook /opt/auto-deployment/setup_cdh_cluster/ansible/deploy_cdh.yml
-# author: Jesse.liu
-# date: 2020-07-23
-# function: 自动部署 Python 2 环境
+# author: Jesse.liu (Updated by RaynLiu for Python 3.8+ compatibility)
+# date: 2020-07-23 (Updated: 2025-11-11)
+# function: 自动部署 Python 3.8+ 环境
 
-  # 下载 pip
-  # 参阅  https://pip.pypa.io/en/stable/installing/
-  - name: 安装 pip 20.1.1
-    # 国外源速度比较慢可以指定使用国内源命令
-    shell: python "{{paths.package}}/get-pip.py" -i http://pypi.douban.com/simple/ --trusted-host pypi.douban.com
+  # 安装 Python 3.8+
+  - name: 检查 Python 3 是否已安装
+    shell: python3 --version
+    register: python3_check
+    ignore_errors: yes
 
-    # 安装 pymysql
-  - name: 安装 pymysql
-    shell: pip install pymysql
+  - name: 安装 Python 3.8+（如果未安装）
+    yum:
+      name:
+        - python3
+        - python3-pip
+        - python3-devel
+      state: present
+    when: python3_check.rc != 0
+    ignore_errors: yes
+
+  - name: 创建 Python 3 软链接到 python（兼容性）
+    file:
+      src: /usr/bin/python3
+      dest: /usr/local/bin/python
+      state: link
+      force: yes
+    ignore_errors: yes
+
+  - name: 升级 pip3 到最新版本
+    shell: python3 -m pip install --upgrade pip -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
+    ignore_errors: yes
+
+  - name: 创建 pip3 软链接到 pip（兼容性）
+    file:
+      src: /usr/bin/pip3
+      dest: /usr/local/bin/pip
+      state: link
+      force: yes
+    ignore_errors: yes
+
+  # 安装 Python 依赖包
+  - name: 安装 PyMySQL（Python 3 兼容版本）
+    shell: pip3 install pymysql -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
+    ignore_errors: yes
+
+  - name: 验证 Python 3 环境
+    shell: |
+      echo "Python 版本: $(python3 --version)"
+      echo "pip 版本: $(pip3 --version)"
+      echo "PyMySQL: $(pip3 show pymysql | grep Version)"
+    register: python_env_info
+    ignore_errors: yes
+
+  - name: 显示 Python 环境信息
+    debug:
+      msg: "{{ python_env_info.stdout_lines }}"
+    when: python_env_info.stdout_lines is defined
 

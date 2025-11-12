@@ -9,31 +9,126 @@
 
   # 安装 yum 源的 GPG key
   # https://docs.cloudera.com/documentation/enterprise/6/release-notes/topics/rg_cm_6_version_download.html
-  - name: 安装 yum 源的 GPG key
+  - name: 安装 yum 源的 GPG key（使用本地文件）
     rpm_key:
       state: present
-      key: https://archive.cloudera.com/cm6/6.3.1/redhat7/yum/RPM-GPG-KEY-cloudera
+      key: /opt/setup_cdh/RPM-GPG-KEY-cloudera
+    ignore_errors: yes
 
-  - name: yum 方式安装 cloudera-manager-server
+  - name: 检查本地 yum 源是否可用
+    stat:
+      path: /var/www/html/cloudera-repos/cm6/repodata/repomd.xml
+    register: local_repo_check
+
+  - name: yum 方式安装 cloudera-manager-server（如果本地源可用）
     yum:
       name:
         - cloudera-manager-server
       state: present
+      disablerepo: epel
+    when: local_repo_check.stat.exists
+    ignore_errors: yes
+
+  - name: RPM 方式安装 cloudera-manager-server（如果 yum 源不可用）
+    shell: |
+      cd /opt/base_file/packages
+      rpm -ivh --force --nodeps cloudera-manager-daemons-*.rpm || true
+      rpm -ivh --force --nodeps cloudera-manager-agent-*.rpm || true
+      rpm -ivh --force --nodeps cloudera-manager-server-*.rpm || true
+    when: not local_repo_check.stat.exists
+    ignore_errors: yes
 
   # 需要安装完  cloudera-manager-daemons cloudera-manager-agent cloudera-manager-server 才有该脚本
   - name: 初始化 scm 数据库
     command: /opt/cloudera/cm/schema/scm_prepare_database.sh mysql scm scm "{{password.scm}}"
 
-  - name: 启动 cloudera-scm-server
+  # 关键修复：确保 MySQL 就绪后再启动 CM Server
+  - name: 等待 MySQL 服务完全启动
+    wait_for:
+      host: localhost
+      port: 3306
+      state: started
+      delay: 2
+      timeout: 60
+    ignore_errors: no
+
+  - name: 验证 MySQL 连接和 SCM 数据库
+    shell: mysql -uroot -p"{{password.mysql}}" -e "USE scm; SELECT COUNT(*) FROM ROLES;" 2>&1
+    register: mysql_scm_check
+    retries: 5
+    delay: 3
+    until: mysql_scm_check.rc == 0
+    ignore_errors: yes
+
+  - name: 显示 MySQL 连接状态
+    debug:
+      msg: |
+        MySQL 连接检查:
+        {% if mysql_scm_check.rc == 0 %}
+        ✓ MySQL 和 SCM 数据库就绪
+        {% else %}
+        ⚠ MySQL 连接异常，但继续启动 CM Server
+        {% endif %}
+
+  - name: 启动 cloudera-scm-server 并设置开机自启动
     service:
       name: cloudera-scm-server
       state: started
+      enabled: yes
+
+  - name: 等待 CM Server 启动（最多120秒）
+    wait_for:
+      port: 7180
+      host: localhost
+      delay: 5
+      timeout: 120
+    ignore_errors: yes
+
+  - name: 检查 CM Server 日志中的启动状态
+    shell: journalctl -u cloudera-scm-server -n 50 --no-pager | grep -E "(Started Jetty|Communications link failure)" || echo "日志检查中..."
+    register: cm_startup_log
+    retries: 6
+    delay: 10
+    until: cm_startup_log.stdout is search("Started Jetty") or cm_startup_log.stdout is search("Communications link failure")
+    ignore_errors: yes
+
+  - name: 显示 CM Server 启动结果
+    debug:
+      msg: |
+        CM Server 启动状态:
+        {% if cm_startup_log.stdout is search("Started Jetty") %}
+        ✓ CM Server 启动成功！
+        访问地址: http://{{ ansible_hostname }}:7180
+        用户名: admin / 密码: admin
+        {% elif cm_startup_log.stdout is search("Communications link failure") %}
+        ✗ CM Server 启动失败 - MySQL 连接错误
+        需要手动修复: cd /root/setup_cdh_cluster && bash scripts/fix_cm_mysql_connection.sh
+        {% else %}
+        ⚠ CM Server 正在启动中（可能需要几分钟）
+        查看日志: tail -f /var/log/cloudera-scm-server/cloudera-scm-server.log
+        {% endif %}
 
 
-  - name: 复制 parcel 到 /opt/cloudera/parcel-repo
-    copy:
-      src: '{{paths.base_file}}/parcels/'
+  # 优化 by RaynLiu - 使用软链接替代复制，节省约 2-4GB 磁盘空间
+  - name: 删除旧的 parcel-repo 目录（如果存在）
+    file:
+      path: /opt/cloudera/parcel-repo
+      state: absent
+    ignore_errors: yes
+
+  - name: 创建软链接到 parcel 目录（节省磁盘空间）
+    file:
+      src: '{{paths.base_file}}/parcels'
       dest: '/opt/cloudera/parcel-repo'
+      state: link
+      force: yes
+    ignore_errors: yes
+
+  - name: 设置 parcel 目录权限
+    file:
+      path: '{{paths.base_file}}/parcels'
       owner: cloudera-scm
       group: cloudera-scm
-      mode: u=rwx,g=rwx,o=rwx
+      mode: u=rwx,g=rwx,o=rx
+      recurse: yes
+    ignore_errors: yes

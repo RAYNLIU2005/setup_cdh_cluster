@@ -45,20 +45,23 @@
 
 
 [all_node]
-cdh1
-cdh2
-cdh3
-cdh4
-cdh5
+node01
+node02
+node03
+
+[master_node]
+node01
+
+[slave_node]
+node02
+node03
 
 [compute_node]
-cdh2
-cdh3
-cdh4
-cdh5
+node02
+node03
 
 [test]
-cdh1
+node01
 
 
 

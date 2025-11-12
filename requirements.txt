@@ -1,0 +1,25 @@
+# CDH集群部署系统 Python依赖
+# author: RaynLiu
+# email: liuyu1_j6go@stu.cqie.edu.cn
+# date: 2025-11-12
+
+# Ansible自动化工具
+ansible==2.9.27
+
+# Python MySQL驱动
+PyMySQL==1.0.2
+
+# YAML解析
+PyYAML==5.4.1
+
+# Jinja2模板引擎
+Jinja2==3.0.3
+
+# 加密库
+cryptography==3.4.8
+
+# 配置管理
+python-dotenv==0.19.2
+
+# 日志增强
+colorlog==6.7.0

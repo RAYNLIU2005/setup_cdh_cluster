@@ -1,0 +1,70 @@
+---
+# author: RaynLiu
+# date: 2025-11-11
+# function: 清理系统临时文件和日志，释放磁盘空间
+
+- hosts: all_node
+  gather_facts: no
+  remote_user: root
+
+  tasks:
+    - name: 记录清理前磁盘使用情况
+      shell: df -h / | tail -1
+      register: disk_before
+
+    - name: 显示清理前磁盘状态
+      debug:
+        msg: "清理前: {{ disk_before.stdout }}"
+
+    - name: 清理YUM缓存
+      shell: yum clean all
+      ignore_errors: yes
+
+    - name: 清理Ansible临时文件
+      shell: rm -rf /root/.ansible/tmp/* /tmp/ansible-* 2>/dev/null
+      ignore_errors: yes
+
+    - name: 清理系统临时文件
+      shell: |
+        rm -rf /tmp/* 2>/dev/null
+        rm -rf /var/tmp/* 2>/dev/null
+      ignore_errors: yes
+
+    - name: 清理旧的日志文件（保留最近7天）
+      shell: find /var/log -type f -name "*.log" -mtime +7 -delete
+      ignore_errors: yes
+
+    - name: 压缩journal日志（限制为100MB）
+      shell: journalctl --vacuum-size=100M
+      ignore_errors: yes
+
+    - name: 清理setup_cdh临时目录
+      shell: rm -rf /opt/setup_cdh/* 2>/dev/null
+      ignore_errors: yes
+      when: inventory_hostname != groups['master_node'][0]
+
+    - name: 记录清理后磁盘使用情况
+      shell: df -h / | tail -1
+      register: disk_after
+
+    - name: 显示清理后磁盘状态
+      debug:
+        msg: "清理后: {{ disk_after.stdout }}"
+
+    - name: 计算释放的空间
+      shell: |
+        before=$(df -BM / | tail -1 | awk '{print $3}' | sed 's/M//')
+        after=$(df -BM / | tail -1 | awk '{print $3}' | sed 's/M//')
+        echo "已释放约 $((before - after)) MB 空间"
+      register: freed_space
+
+    - name: 显示释放空间信息
+      debug:
+        msg: "{{ freed_space.stdout }}"
+
+    - name: 记录清理日志
+      shell: |
+        echo "========== 系统清理 $(date) ==========" >> /var/log/cdh_deploy.log
+        echo "清理前: {{ disk_before.stdout }}" >> /var/log/cdh_deploy.log
+        echo "清理后: {{ disk_after.stdout }}" >> /var/log/cdh_deploy.log
+      ignore_errors: yes

@@ -1,0 +1,558 @@
+# CDH集群部署 Makefile
+# author: RaynLiu
+# email: liuyu1_j6go@stu.cqie.edu.cn
+# date: 2025-11-12
+
+.PHONY: help check clean deploy verify status start stop restart force-stop nodes check-nodes add-nodes fix-agent fix-all distribute-parcel start-all stop-all health ps ports logs install-ansible prepare-env fix-yum setup-python setup-ssh fix-permissions reset-mysql cleanup-copies quick-deploy full-deploy check-env health-check health-check-v2 diagnose fix-cm-mysql restart-services install-deps test test-env test-env-v2 test-full docker-build docker-up docker-down docker-logs docker-exec docker-clean env-file post-check init test-ssh check-disk show-format check-delete delall
+
+PROJECT_DIR := /root/setup_cdh_cluster
+INVENTORY := $(PROJECT_DIR)/ansible/node_group/hosts
+PLAYBOOK := $(PROJECT_DIR)/ansible/deploy_cdh.yml
+
+help:
+	@echo "=========================================="
+	@echo "  CDH集群部署管理系统"
+	@echo "  Copyright © 2025 RaynLiu"
+	@echo "  保留所有权利 All Rights Reserved"
+	@echo "=========================================="
+	@echo ""
+	@echo "环境准备命令:"
+	@echo "  make init            - ⭐ 交互式环境初始化（推荐首次使用，灵感来自 playground）"
+	@echo "  make prepare-env     - 🚀 一键准备所有环境（自动化版本）"
+	@echo "  make setup-ssh       - 🔑 配置 SSH 免密登录"
+	@echo "  make test-ssh        - 🔍 测试 SSH 免密登录状态"
+	@echo "  make check-disk      - 💾 检查磁盘空间（推荐部署前运行）"
+	@echo "  make fix-yum         - 修复 YUM 源问题"
+	@echo "  make setup-python    - 安装配置 Python 3 环境"
+	@echo "  make install-ansible - 安装 Ansible"
+	@echo "  make check-env       - 检查环境是否准备就绪"
+	@echo ""
+	@echo "部署管理命令:"
+	@echo "  make check           - 检查磁盘空间和系统状态"
+	@echo "  make clean           - 清理系统临时文件"
+	@echo "  make deploy          - 部署 CDH 集群"
+	@echo "  make verify          - 验证部署状态"
+	@echo "  make cleanup-copies  - 清理复制文件，释放空间"
+	@echo ""
+	@echo "集群管理命令:"
+	@echo "  make status          - 查看集群服务状态"
+	@echo "  make start           - 启动集群所有服务"
+	@echo "  make stop            - 停止集群所有服务"
+	@echo "  make restart         - 重启集群所有服务"
+	@echo "  make force-stop      - 强制停止所有服务（清理残留进程）"
+	@echo "  make nodes           - 查看所有节点状态（美化表格）"
+	@echo "  make check-nodes     - 检查集群节点状态（网络、SSH、Agent）"
+	@echo "  make add-nodes       - 添加节点到集群（node02、node03）"
+	@echo "  make fix-agent       - 🔧 修复 Agent 配置错误"
+	@echo "  make fix-all         - 🛠️  修复所有已知问题（推荐）"
+	@echo "  make distribute-parcel - 📦 手动分发 CDH Parcel"
+	@echo "  make health          - 运行健康检查脚本"
+	@echo "  make health-check-v2 - 优化版健康检查（美化输出）"
+	@echo "  make ps              - 查看所有 Cloudera 相关进程"
+	@echo "  make ports           - 检查所有服务端口"
+	@echo "  make logs            - 查看主要服务日志"
+	@echo ""
+	@echo "监控诊断命令:"
+	@echo "  make post-check      - 部署后完整检查（推荐部署后运行）"
+	@echo "  make health          - 健康检查（全面检查集群状态）"
+	@echo "  make health-check    - 新版健康检查（服务依赖分析）"
+	@echo "  make health-check-v2 - 优化版健康检查（美化输出）"
+	@echo "  make diagnose        - 深度诊断（依赖关系+错误分析）"
+	@echo "  make ps              - 查看进程"
+	@echo "  make ports           - 查看端口占用"
+	@echo "  make logs            - 查看部署日志"
+	@echo "  make ports           - 🔌 查看端口占用"
+	@echo "  make logs            - 📝 查看部署日志"
+	@echo ""
+	@echo "快捷命令:"
+	@echo "  make full-deploy     - 完整部署流程（环境准备+部署+验证）"
+	@echo "  make quick-deploy    - 快速部署（清理+部署+验证）"
+	@echo ""
+	@echo "故障修复命令:"
+	@echo "  make fix-permissions - 🔧 修复所有脚本执行权限"
+	@echo "  make reset-mysql     - 🔑 重置 MySQL Root 密码"
+	@echo "  make fix-cm-mysql    - 🔧 修复 CM Server MySQL 连接"
+	@echo "  make restart-services - 🔄 按正确顺序重启所有服务"
+	@echo ""
+	@echo "危险操作命令:"
+	@echo "  make check-delete    - 🔍 删除前安全检查（检查保护目录和服务）"
+	@echo "  make delall          - 💣 完全删除 CDH 集群（不可恢复，需要确认）"
+	@echo ""
+	@echo "测试命令:"
+	@echo "  make install-deps    - 📦 安装Python依赖"
+	@echo "  make test-env        - 🧪 运行环境测试"
+	@echo "  make test-full       - 🧪 运行完整测试（需要先部署）"
+	@echo ""
+	@echo "Docker命令:"
+	@echo "  make docker-build    - 🐳 构建Docker镜像"
+	@echo "  make docker-up       - 🐳 启动Docker容器"
+	@echo "  make docker-down     - 🐳 停止Docker容器"
+	@echo "  make docker-logs     - 🐳 查看Docker日志"
+	@echo "  make docker-exec     - 🐳 进入Docker容器"
+	@echo "  make docker-clean    - 🐳 清理Docker环境"
+	@echo ""
+	@echo "配置命令:"
+	@echo "  make env-file        - 📝 创建.env配置文件"
+	@echo ""
+
+# ==========================================
+# 环境准备命令
+# ==========================================
+
+# 交互式环境初始化（推荐首次使用）
+init:
+	@echo "=========================================="
+	@echo "  交互式环境初始化"
+	@echo "  灵感来自 playground 项目"
+	@echo "  Copyright © 2025 RaynLiu"
+	@echo "=========================================="
+	@echo ""
+	@chmod +x $(PROJECT_DIR)/scripts/init_environment.sh
+	@$(PROJECT_DIR)/scripts/init_environment.sh
+
+# 一键准备所有环境（自动化版本）
+prepare-env:
+	@echo "=========================================="
+	@echo "  准备 CDH 部署环境"
+	@echo "  Copyright © 2025 RaynLiu"
+	@echo "=========================================="
+	@echo ""
+	@echo "[1/5] 修复 YUM 源..."
+	@$(MAKE) fix-yum
+	@echo ""
+	@echo "[2/5] 安装 Python 3..."
+	@$(MAKE) setup-python
+	@echo ""
+	@echo "[3/5] 安装 Ansible..."
+	@$(MAKE) install-ansible
+	@echo ""
+	@echo "[4/5] 修复所有节点 YUM 源..."
+	@for node in node01 node02 node03; do \
+		echo "  修复 $$node..."; \
+		ssh $$node "rm -f /etc/yum.repos.d/*ansible*.repo && yum clean all" 2>/dev/null || true; \
+	done
+	@echo ""
+	@echo "[5/5] 检查环境..."
+	@$(MAKE) check-env
+	@echo ""
+	@echo "=========================================="
+	@echo "  ✓ 环境准备完成！"
+	@echo "=========================================="
+	@echo ""
+	@echo "💡 提示："
+	@echo "  推荐首次使用: make init  （交互式，更友好）"
+	@echo ""
+	@echo "下一步："
+	@echo "  make deploy    # 开始部署 CDH 集群"
+	@echo ""
+
+# 配置 SSH 免密登录
+setup-ssh:
+	@echo "==> 配置 SSH 免密登录..."
+	@chmod +x $(PROJECT_DIR)/scripts/setup_ssh_keys.sh
+	@$(PROJECT_DIR)/scripts/setup_ssh_keys.sh
+
+# 测试 SSH 免密登录状态
+test-ssh:
+	@chmod +x $(PROJECT_DIR)/scripts/test_ssh.sh
+	@$(PROJECT_DIR)/scripts/test_ssh.sh
+
+# 检查磁盘空间
+check-disk:
+	@chmod +x $(PROJECT_DIR)/scripts/check_disk_space.sh
+	@$(PROJECT_DIR)/scripts/check_disk_space.sh
+
+# 修复 YUM 源
+fix-yum:
+	@echo "==> 修复 YUM 源..."
+	@rm -f /etc/yum.repos.d/*ansible*.repo
+	@rm -f /etc/yum.repos.d/CentOS-Ansible*.repo
+	@./scripts/fix_yum_repos.sh
+	@yum clean all
+	@echo "✓ YUM 源修复完成"
+
+# 安装配置 Python 3
+setup-python:
+	@echo "==> 安装 Python 3..."
+	@if ! command -v python3 >/dev/null 2>&1; then \
+		yum install -y python3 python3-pip python3-devel; \
+	else \
+		echo "✓ Python 3 已安装: $$(python3 --version)"; \
+	fi
+	@echo "==> 配置 pip 镜像..."
+	@mkdir -p ~/.pip
+	@echo "[global]" > ~/.pip/pip.conf
+	@echo "index-url = https://mirrors.aliyun.com/pypi/simple/" >> ~/.pip/pip.conf
+	@echo "trusted-host = mirrors.aliyun.com" >> ~/.pip/pip.conf
+	@echo "==> 升级 pip..."
+	@python3 -m pip install --upgrade pip -q
+	@echo "==> 安装 Python 依赖..."
+	@pip3 install pymysql -q
+	@echo "✓ Python 环境配置完成"
+	@python3 --version
+	@pip3 --version
+
+# 安装 Ansible
+install-ansible:
+	@echo "==> 安装 Ansible..."
+	@if ! command -v ansible >/dev/null 2>&1; then \
+		pip3 install ansible==2.9.27 -q; \
+		ln -sf /usr/local/bin/ansible /usr/bin/ansible 2>/dev/null || true; \
+		ln -sf /usr/local/bin/ansible-playbook /usr/bin/ansible-playbook 2>/dev/null || true; \
+	else \
+		echo "✓ Ansible 已安装"; \
+	fi
+	@echo "✓ Ansible 安装完成"
+	@ansible --version | head -1
+
+# 检查环境
+check-env:
+	@echo "==> 检查环境..."
+	@chmod +x $(PROJECT_DIR)/scripts/check_python_env.sh
+	@$(PROJECT_DIR)/scripts/check_python_env.sh || true
+	@echo ""
+	@echo "测试 Ansible 连接..."
+	@ansible all_node -i $(INVENTORY) -m ping 2>/dev/null || echo "⚠ 部分节点连接失败（部署时会自动处理）"
+
+check:
+	@echo "=========================================="
+	@echo "  CDH集群部署管理系统"
+	@echo "  Copyright © 2025 RaynLiu"
+	@echo "  保留所有权利 All Rights Reserved"
+	@echo "=========================================="
+	@echo ""
+	@echo "==> 检查环境..."
+	@./scripts/manage_cluster.sh check
+
+clean:
+	@echo "==> 清理系统..."
+	@./scripts/manage_cluster.sh clean
+
+deploy:
+	@echo "=========================================="
+	@echo "  CDH集群部署管理系统"
+	@echo "  Copyright © 2025 RaynLiu"
+	@echo "  保留所有权利 All Rights Reserved"
+	@echo "=========================================="
+	@echo ""
+	@echo "==> 开始部署CDH集群..."
+	@./scripts/manage_cluster.sh deploy
+
+verify:
+	@echo "==> 验证部署..."
+	@./scripts/manage_cluster.sh verify
+
+start:
+	@echo "==> 启动集群..."
+	@chmod +x $(PROJECT_DIR)/scripts/cluster_control.sh
+	@$(PROJECT_DIR)/scripts/cluster_control.sh start
+
+stop:
+	@echo "==> 停止集群..."
+	@chmod +x $(PROJECT_DIR)/scripts/cluster_control.sh
+	@$(PROJECT_DIR)/scripts/cluster_control.sh stop
+
+restart:
+	@echo "==> 重启集群..."
+	@chmod +x $(PROJECT_DIR)/scripts/cluster_control.sh
+	@$(PROJECT_DIR)/scripts/cluster_control.sh restart
+
+status:
+	@chmod +x $(PROJECT_DIR)/scripts/cluster_control.sh
+	@$(PROJECT_DIR)/scripts/cluster_control.sh status
+
+force-stop:
+	@echo "==> 强制停止所有服务..."
+	@./scripts/manage_cluster.sh force-stop
+
+nodes:
+	@echo "==> 检查所有节点连通性..."
+	@./scripts/manage_cluster.sh nodes
+
+# 检查集群节点状态
+check-nodes:
+	@chmod +x $(PROJECT_DIR)/scripts/check_cluster_nodes.sh
+	@$(PROJECT_DIR)/scripts/check_cluster_nodes.sh
+
+# 添加节点到集群
+add-nodes:
+	@chmod +x $(PROJECT_DIR)/scripts/add_cluster_nodes.sh
+	@$(PROJECT_DIR)/scripts/add_cluster_nodes.sh
+
+# 修复 Agent 配置
+fix-agent:
+	@chmod +x $(PROJECT_DIR)/scripts/fix_agent_config.sh
+	@$(PROJECT_DIR)/scripts/fix_agent_config.sh
+
+# 修复所有已知问题
+fix-all:
+	@chmod +x $(PROJECT_DIR)/scripts/fix_all_issues.sh
+	@$(PROJECT_DIR)/scripts/fix_all_issues.sh
+
+# 手动分发 Parcel
+distribute-parcel:
+	@chmod +x $(PROJECT_DIR)/scripts/manual_distribute_parcel.sh
+	@$(PROJECT_DIR)/scripts/manual_distribute_parcel.sh
+
+start-all:
+	@echo "==> 启动所有节点..."
+	@./scripts/manage_cluster.sh start-all
+
+stop-all:
+	@echo "==> 停止所有节点..."
+	@./scripts/manage_cluster.sh stop-all
+
+health:
+	@echo "==> 执行健康检查..."
+	@./scripts/manage_cluster.sh health
+
+ps:
+	@echo "==> 查看进程..."
+	@./scripts/manage_cluster.sh ps
+
+ports:
+	@echo "==> 查看端口占用..."
+	@./scripts/manage_cluster.sh ports
+
+logs:
+	@echo "==> 查看日志..."
+	@./scripts/manage_cluster.sh logs
+
+# 快速部署（清理+部署+验证）
+quick-deploy: clean deploy verify
+	@echo ""
+	@echo "=========================================="
+	@echo "  🎉 快速部署完成！"
+	@echo "=========================================="
+	@echo ""
+	@echo "🌐 访问 Cloudera Manager："
+	@echo "  http://node01:7180 (admin/admin)"
+	@echo ""
+	@echo "📋 后续操作："
+	@echo "  make status        - 查看服务状态"
+	@echo "  make health-check  - 健康检查"
+	@echo "=========================================="
+	@echo ""
+
+# 完整部署流程（包含环境准备）
+full-deploy: prepare-env check clean deploy verify
+	@echo ""
+	@echo "=========================================="
+	@echo "  🎉 完整部署流程完成！"
+	@echo "=========================================="
+	@echo ""
+	@echo "⏱  CM Server 启动：预计需要 3-5 分钟"
+	@echo ""
+	@echo "🌐 访问 Cloudera Manager Web 界面："
+	@echo "  URL:  http://node01:7180"
+	@echo "  或:   http://192.168.56.151:7180"
+	@echo ""
+	@echo "  默认账号: admin"
+	@echo "  默认密码: admin"
+	@echo ""
+	@echo "📋 后续操作："
+	@echo "  make status        - 查看服务状态"
+	@echo "  make health-check  - 健康检查"
+	@echo "  make test-full     - 完整测试"
+	@echo "  make logs          - 查看日志"
+	@echo ""
+	@echo "📝 提示：等待 CM Server 启动后再访问 Web 界面"
+	@echo "=========================================="
+	@echo ""
+
+# 清理复制文件，使用软链接替代
+cleanup-copies:
+	@echo "==> 清理复制文件，释放磁盘空间..."
+	@./scripts/manage_cluster.sh cleanup
+
+# ==========================================
+# 故障修复命令
+# ==========================================
+
+# 修复所有脚本执行权限
+fix-permissions:
+	@echo "==> 修复所有脚本执行权限..."
+	@chmod +x $(PROJECT_DIR)/scripts/*.sh
+	@echo "✓ 所有脚本权限已修复"
+
+# 重置 MySQL Root 密码
+reset-mysql:
+	@echo "==> 重置 MySQL Root 密码..."
+	@chmod +x $(PROJECT_DIR)/scripts/reset_mysql_password.sh
+	@$(PROJECT_DIR)/scripts/reset_mysql_password.sh
+
+# 新版健康检查
+health-check:
+	@echo "==> 执行健康检查..."
+	@chmod +x $(PROJECT_DIR)/scripts/health_check.sh
+	@$(PROJECT_DIR)/scripts/health_check.sh
+
+# 优化版健康检查（美化输出）
+health-check-v2:
+	@chmod +x $(PROJECT_DIR)/scripts/health_check_v2.sh
+	@$(PROJECT_DIR)/scripts/health_check_v2.sh
+
+# 深度诊断
+diagnose:
+	@echo "==> 执行深度诊断..."
+	@chmod +x $(PROJECT_DIR)/scripts/diagnose_dependencies.sh
+	@$(PROJECT_DIR)/scripts/diagnose_dependencies.sh
+
+# 修复 CM Server MySQL 连接
+fix-cm-mysql:
+	@echo "==> 修复 CM Server MySQL 连接..."
+	@chmod +x $(PROJECT_DIR)/scripts/fix_cm_mysql_connection.sh
+	@$(PROJECT_DIR)/scripts/fix_cm_mysql_connection.sh
+
+# 按正确顺序重启服务
+restart-services:
+	@echo "==> 按正确顺序重启所有服务..."
+	@chmod +x $(PROJECT_DIR)/scripts/restart_services.sh
+	@$(PROJECT_DIR)/scripts/restart_services.sh
+
+# ==========================================
+# 依赖管理命令
+# ==========================================
+
+# 安装Python依赖
+install-deps:
+	@echo "==> 安装Python依赖..."
+	@if [ -f $(PROJECT_DIR)/requirements.txt ]; then \
+		pip3 install -r $(PROJECT_DIR)/requirements.txt; \
+		echo "✓ 依赖安装完成"; \
+	else \
+		echo "⚠ requirements.txt 不存在"; \
+	fi
+
+# ==========================================
+# 测试命令
+# ==========================================
+
+# 运行环境测试
+test-env:
+	@echo "==> 运行环境测试..."
+	@chmod +x $(PROJECT_DIR)/tests/run_tests.sh
+	@python3 $(PROJECT_DIR)/tests/test_environment.py
+
+# 运行环境测试（优化版）
+test-env-v2:
+	@chmod +x $(PROJECT_DIR)/tests/run_tests_v2.sh
+	@$(PROJECT_DIR)/tests/run_tests_v2.sh
+
+# 运行完整测试
+test-full:
+	@echo "==> 运行完整测试..."
+	@chmod +x $(PROJECT_DIR)/tests/run_tests.sh
+	@$(PROJECT_DIR)/tests/run_tests.sh --full
+
+# 别名
+test: test-env
+
+# ==========================================
+# Docker命令
+# ==========================================
+
+# 构建Docker镜像
+docker-build:
+	@echo "==> 构建Docker镜像..."
+	@docker build -t cdh-deploy:latest $(PROJECT_DIR)
+	@echo "✓ 镜像构建完成"
+
+# 启动Docker容器
+docker-up:
+	@echo "==> 启动Docker容器..."
+	@cd $(PROJECT_DIR) && docker-compose up -d
+	@echo "✓ 容器已启动"
+	@echo "使用 'make docker-exec' 进入容器"
+
+# 停止Docker容器
+docker-down:
+	@echo "==> 停止Docker容器..."
+	@cd $(PROJECT_DIR) && docker-compose down
+	@echo "✓ 容器已停止"
+
+# 查看Docker日志
+docker-logs:
+	@echo "==> 查看Docker日志..."
+	@cd $(PROJECT_DIR) && docker-compose logs -f
+
+# 进入Docker容器
+docker-exec:
+	@echo "==> 进入Docker容器..."
+	@cd $(PROJECT_DIR) && docker-compose exec cdh-control bash
+
+# 清理Docker环境
+docker-clean:
+	@echo "==> 清理Docker环境..."
+	@cd $(PROJECT_DIR) && docker-compose down -v
+	@docker rmi cdh-deploy:latest 2>/dev/null || true
+	@echo "✓ Docker环境已清理"
+
+# ==========================================
+# 配置管理命令
+# ==========================================
+
+# 创建.env文件
+env-file:
+	@echo "==> 创建.env配置文件..."
+	@if [ ! -f $(PROJECT_DIR)/.env ]; then \
+		cp $(PROJECT_DIR)/.env.template $(PROJECT_DIR)/.env; \
+		echo "✓ .env文件已创建，请编辑配置"; \
+		echo "  vi $(PROJECT_DIR)/.env"; \
+	else \
+		echo "⚠ .env文件已存在"; \
+	fi
+
+# ==========================================
+# 部署后检查命令
+# ==========================================
+
+# 部署后完整检查
+post-check:
+	@echo "==> 运行部署后完整检查..."
+	@chmod +x $(PROJECT_DIR)/scripts/post_deploy_check.sh
+	@$(PROJECT_DIR)/scripts/post_deploy_check.sh
+
+# ==========================================
+# 输出格式命令
+# ==========================================
+
+# 显示输出格式样例
+show-format:
+	@chmod +x $(PROJECT_DIR)/lib/output_formatter.sh
+	@bash $(PROJECT_DIR)/lib/output_formatter.sh
+
+# ==========================================
+# 危险操作命令
+# ==========================================
+
+# 删除前安全检查
+check-delete:
+	@echo "==> 删除前安全检查..."
+	@chmod +x $(PROJECT_DIR)/scripts/verify_safe_delete.sh
+	@$(PROJECT_DIR)/scripts/verify_safe_delete.sh
+
+# 完全删除 CDH 集群
+delall:
+	@echo ""
+	@echo "=========================================="
+	@echo "  ⚠️  危险操作：完全删除 CDH 集群"
+	@echo "=========================================="
+	@echo ""
+	@echo "🛡️  安全保护："
+	@echo "  ✓ 保留 /opt/base_file（安装包）"
+	@echo "  ✓ 保护系统关键服务"
+	@echo ""
+	@echo "❌ 将要删除："
+	@echo "  • Cloudera Manager"
+	@echo "  • MySQL 数据库"
+	@echo "  • Java 和 Scala"
+	@echo "  • CDH 数据目录"
+	@echo "  • CDH 配置文件"
+	@echo ""
+	@echo "⚠️  数据将无法恢复！"
+	@echo ""
+	@echo "💡 建议先运行: make check-delete"
+	@echo ""
+	@chmod +x $(PROJECT_DIR)/scripts/delete_cluster.sh
+	@$(PROJECT_DIR)/scripts/delete_cluster.sh

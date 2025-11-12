@@ -22,26 +22,77 @@
     service:
       name: httpd
       state: started
+      enabled: yes
 
+  # 优化：使用软链接替代文件复制，节省磁盘空间（约1GB）
+  - name: 删除旧的cm6目录（如果存在）
+    file:
+      path: /var/www/html/cloudera-repos/cm6
+      state: absent
 
-  - name: 拷贝 cloudera-manager-agent-xxx.rpm 文件到本地仓库
-    command: cp '{{paths.package}}/{{packages.cloudera_manager_agent}}' /var/www/html/cloudera-repos/cm6
+  - name: 创建软链接到packages目录（节省磁盘空间）
+    file:
+      src: /opt/base_file/packages
+      dest: /var/www/html/cloudera-repos/cm6
+      state: link
+      force: yes
 
-  - name: 拷贝 cloudera-manager-daemons-xxx.rpm 文件到本地仓库
-    command: cp '{{paths.package}}/{{packages.cloudera_manager_daemons}}' /var/www/html/cloudera-repos/cm6
+  - name: 记录仓库配置日志
+    shell: |
+      echo "========== 本地仓库配置 $(date) ==========" >> /var/log/cdh_deploy.log
+      echo "使用软链接: /opt/base_file/packages -> /var/www/html/cloudera-repos/cm6" >> /var/log/cdh_deploy.log
+      df -h / >> /var/log/cdh_deploy.log
+    ignore_errors: yes
 
-  - name: 拷贝 cloudera-manager-server-xxx.rpm 文件到本地仓库
-    command: cp '{{paths.package}}/{{packages.cloudera_manager_server}}' /var/www/html/cloudera-repos/cm6
+  - name: 修复 EPEL 仓库配置（使用国内镜像源并设置自动跳过）
+    shell: |
+      if [ -f /etc/yum.repos.d/epel.repo ]; then
+        # 禁用 metalink
+        sed -i 's|^metalink=|#metalink=|g' /etc/yum.repos.d/epel.repo
+        # 启用 baseurl 并使用阿里云镜像
+        sed -i 's|^#baseurl=https://download.fedoraproject.org/pub/epel|baseurl=https://mirrors.aliyun.com/epel|g' /etc/yum.repos.d/epel.repo
+        sed -i 's|^baseurl=https://download.fedoraproject.org/pub/epel|baseurl=https://mirrors.aliyun.com/epel|g' /etc/yum.repos.d/epel.repo
+        # 设置为不可用时自动跳过
+        sed -i '/^\[epel\]/a skip_if_unavailable=1' /etc/yum.repos.d/epel.repo
+      fi
+    ignore_errors: yes
 
-  - name: 拷贝 cloudera-manager-server-db-xxx.rpm 文件到本地仓库
-    command: cp '{{paths.package}}/{{packages.cloudera_manager_server_db}}' /var/www/html/cloudera-repos/cm6
+  - name: 清理 YUM 缓存
+    command: yum clean all
+    ignore_errors: yes
 
-  - name: 安装 createrepo 命令
+  - name: 尝试从 CentOS base 源安装 createrepo
     yum:
       name:
         - createrepo
       state: present
+      disablerepo: epel,cloudera_setup_cdh
+      enablerepo: base,updates,extras
+    ignore_errors: yes
+
+  - name: 如果从 base 源失败，尝试从 EPEL 安装 createrepo
+    yum:
+      name:
+        - createrepo
+      state: present
+    ignore_errors: yes
 
   # createrepo 在创建本地 yum 源时使用
-  - name: 创建 repo 目录
+  - name: 检查 createrepo 是否安装成功
+    command: which createrepo
+    register: createrepo_check
+    ignore_errors: yes
+
+  - name: 创建 repo 元数据目录（如果 createrepo 可用）
     command: createrepo /var/www/html/cloudera-repos/cm6
+    when: createrepo_check.rc == 0
+    ignore_errors: yes
+
+  - name: 记录 createrepo 状态
+    shell: |
+      if [ -d /var/www/html/cloudera-repos/cm6/repodata ]; then
+        echo "[成功] repodata 目录已创建" >> /var/log/cdh_deploy.log
+      else
+        echo "[警告] repodata 目录未创建，将使用 RPM 直接安装" >> /var/log/cdh_deploy.log
+      fi
+    ignore_errors: yes

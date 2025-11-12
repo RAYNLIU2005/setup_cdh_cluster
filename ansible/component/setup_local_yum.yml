@@ -12,4 +12,6 @@
       name: cloudera_setup_cdh
       description: 含有 cloudera-manager-daemons、cloudera-manager-agent、cloudera-manager-server、mysql-server、mysql-client
       baseurl: '{{url.cloudera_baseurl_local}}'
+      gpgcheck: no
+      skip_if_unavailable: yes
 

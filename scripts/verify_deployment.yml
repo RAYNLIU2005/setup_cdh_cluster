@@ -1,0 +1,119 @@
+---
+# author: RaynLiu
+# date: 2025-11-11
+# function: 验证CDH集群部署状态
+
+- hosts: all_node
+  gather_facts: no
+  remote_user: root
+
+  tasks:
+    - name: 检查Java安装
+      shell: java -version 2>&1 | head -1
+      register: java_version
+      ignore_errors: yes
+
+    - name: 显示Java版本
+      debug:
+        msg: "Java版本: {{ java_version.stdout }}"
+
+    - name: 检查Scala安装
+      shell: scala -version 2>&1
+      register: scala_version
+      ignore_errors: yes
+
+    - name: 显示Scala版本
+      debug:
+        msg: "Scala版本: {{ scala_version.stdout }}"
+
+    - name: 检查 Python 3 版本
+      shell: python3 --version
+      register: python3_version
+      ignore_errors: yes
+
+    - name: 显示 Python 3 版本
+      debug:
+        msg: "Python 3版本: {{ python3_version.stdout }}"
+
+    - name: 检查 Python 3 pip
+      shell: pip3 --version
+      register: pip_version
+      ignore_errors: yes
+
+    - name: 显示pip版本
+      debug:
+        msg: "pip版本: {{ pip_version.stdout }}"
+
+    - name: 检查Cloudera Manager Agent状态
+      shell: systemctl status cloudera-scm-agent | grep Active
+      register: agent_status
+      ignore_errors: yes
+
+    - name: 显示Agent状态
+      debug:
+        msg: "CM Agent状态: {{ agent_status.stdout }}"
+
+- hosts: master_node
+  gather_facts: no
+  remote_user: root
+
+  tasks:
+    - name: 检查MySQL服务状态
+      shell: systemctl status mysqld | grep Active
+      register: mysql_status
+      ignore_errors: yes
+
+    - name: 显示MySQL状态
+      debug:
+        msg: "MySQL状态: {{ mysql_status.stdout }}"
+
+    - name: 检查Cloudera Manager Server状态
+      shell: systemctl status cloudera-scm-server | grep Active
+      register: server_status
+      ignore_errors: yes
+
+    - name: 显示CM Server状态
+      debug:
+        msg: "CM Server状态: {{ server_status.stdout }}"
+
+    - name: 检查httpd服务状态
+      shell: systemctl status httpd | grep Active
+      register: httpd_status
+      ignore_errors: yes
+
+    - name: 显示httpd状态
+      debug:
+        msg: "httpd状态: {{ httpd_status.stdout }}"
+
+    - name: 测试本地仓库访问
+      shell: curl -s http://localhost/cloudera-repos/cm6/ | head -5
+      register: repo_test
+      ignore_errors: yes
+
+    - name: 显示仓库访问结果
+      debug:
+        msg: "本地仓库可访问: {{ 'YES' if repo_test.rc == 0 else 'NO' }}"
+
+    - name: 生成部署验证报告
+      shell: |
+        echo "========== CDH部署验证报告 $(date) ==========" > /root/deployment_report.txt
+        echo "" >> /root/deployment_report.txt
+        echo "=== 磁盘空间 ===" >> /root/deployment_report.txt
+        df -h >> /root/deployment_report.txt
+        echo "" >> /root/deployment_report.txt
+        echo "=== 服务状态 ===" >> /root/deployment_report.txt
+        systemctl status mysqld | grep Active >> /root/deployment_report.txt
+        systemctl status cloudera-scm-server | grep Active >> /root/deployment_report.txt
+        systemctl status httpd | grep Active >> /root/deployment_report.txt
+        echo "" >> /root/deployment_report.txt
+        echo "=== 网络连接 ===" >> /root/deployment_report.txt
+        ping -c 2 node02 >> /root/deployment_report.txt 2>&1
+        ping -c 2 node03 >> /root/deployment_report.txt 2>&1
+        echo "" >> /root/deployment_report.txt
+        echo "验证完成！" >> /root/deployment_report.txt
+        cat /root/deployment_report.txt
+      register: report
+
+    - name: 显示验证报告
+      debug:
+        msg: "{{ report.stdout_lines }}"

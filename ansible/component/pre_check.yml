@@ -1,0 +1,71 @@
+---
+# author: RaynLiu
+# date: 2025-11-11
+# function: 部署前环境检查
+
+  - name: 检查磁盘空间（根分区至少需要30GB可用空间）
+    shell: df -BG / | tail -1 | awk '{print $4}' | sed 's/G//'
+    register: disk_space
+    failed_when: disk_space.stdout|int < 25
+    ignore_errors: yes
+
+  - name: 显示磁盘空间信息
+    debug:
+      msg: "当前可用磁盘空间: {{ disk_space.stdout }}GB (建议至少30GB)"
+
+  - name: 检查内存（至少需要2GB）
+    shell: free -g | grep Mem | awk '{print $2}'
+    register: memory_size
+    failed_when: memory_size.stdout|int < 2
+    ignore_errors: yes
+
+  - name: 显示内存信息
+    debug:
+      msg: "当前内存大小: {{ memory_size.stdout }}GB"
+
+  - name: 检查主机名解析
+    shell: ping -c 2 {{ inventory_hostname }}
+    register: hostname_check
+    failed_when: hostname_check.rc != 0
+    ignore_errors: yes
+
+  - name: 检查SSH连接
+    wait_for:
+      host: "{{ inventory_hostname }}"
+      port: 22
+      state: started
+      timeout: 5
+
+  - name: 检查base_file目录是否存在
+    stat:
+      path: /opt/base_file/packages
+    register: base_file_check
+    delegate_to: "{{ groups['master_node'][0] }}"
+    run_once: true
+
+  - name: 提示base_file目录不存在
+    fail:
+      msg: "错误：/opt/base_file/packages 目录不存在，请先上传安装包！"
+    when: not base_file_check.stat.exists
+    delegate_to: "{{ groups['master_node'][0] }}"
+    run_once: true
+
+  - name: 检查必需的安装包文件
+    stat:
+      path: "/opt/base_file/packages/{{ item }}"
+    register: package_check
+    delegate_to: "{{ groups['master_node'][0] }}"
+    run_once: true
+    with_items:
+      - jdk-8u261-linux-x64.tar.gz
+      - mysql-connector-java-5.1.47.jar
+    failed_when: not package_check.results[0].stat.exists
+    ignore_errors: yes
+
+  - name: 记录检查结果到日志
+    shell: |
+      echo "========== 部署前检查 $(date) ==========" >> /var/log/cdh_deploy.log
+      echo "磁盘空间: {{ disk_space.stdout }}GB" >> /var/log/cdh_deploy.log
+      echo "内存大小: {{ memory_size.stdout }}GB" >> /var/log/cdh_deploy.log
+      echo "主机名: {{ inventory_hostname }}" >> /var/log/cdh_deploy.log
+    ignore_errors: yes

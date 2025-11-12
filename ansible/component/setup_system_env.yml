@@ -24,12 +24,28 @@
       replace: 'SELINUX=disabled'
 
   # 1.3 安装常见工具
-  # 注意：单独一个 task 安装 epel，epel-release 是包丰富的第三方源，缺少 epel 其他“安装常见工具命令”组件可能会安装失败
+  # 注意：单独一个 task 安装 epel，epel-release 是包丰富的第三方源，缺少 epel 其他"安装常见工具命令"组件可能会安装失败
   - name: 安装常用工具 yum 源
     yum:
       name:
         - epel-release
       state: present
+    ignore_errors: yes
+
+  - name: 配置 EPEL 使用国内镜像并设置自动跳过不可用源
+    shell: |
+      if [ -f /etc/yum.repos.d/epel.repo ]; then
+        sed -i 's|^metalink=|#metalink=|g' /etc/yum.repos.d/epel.repo
+        sed -i 's|^#baseurl=https://download.fedoraproject.org/pub/epel|baseurl=https://mirrors.aliyun.com/epel|g' /etc/yum.repos.d/epel.repo
+        sed -i 's|^baseurl=https://download.fedoraproject.org/pub/epel|baseurl=https://mirrors.aliyun.com/epel|g' /etc/yum.repos.d/epel.repo
+        # 设置为不可用时自动跳过，避免阻塞
+        sed -i '/^\[epel\]/a skip_if_unavailable=1' /etc/yum.repos.d/epel.repo
+      fi
+    ignore_errors: yes
+
+  - name: 清理 YUM 缓存
+    shell: yum clean all
+    ignore_errors: yes
 
   # createrepo 在创建本地 yum 源时使用
   - name: 安装常见工具命令
@@ -42,12 +58,18 @@
         - sysstat
         - screen
       state: present
+      enablerepo: base,updates,extras,epel
+    ignore_errors: yes
 
-  # 更新 yum 现有程序
-  - name: 更新 yum 现有程序
-    yum:
-      name: '*'
-      state: latest
+  # 更新 yum 现有程序（跳过以节省时间和空间）
+  # - name: 更新 yum 现有程序
+  #   yum:
+  #     name: '*'
+  #     state: latest
+
+  - name: 清理YUM缓存
+    shell: yum clean all
+    ignore_errors: yes
 
   # 清空 /opt/setup_cdh
 #  - name: 清空 /opt/setup_cdh
@@ -63,15 +85,71 @@
       state: directory
       mode: '0755'
 
-  # 1.5 分发安装包、驱动
-  # https://docs.ansible.com/ansible/latest/modules/copy_module.html#id5
-  - name: 分发安装包、驱动到计算节点（自动覆盖修改过的文件）
+  # 1.5 使用软链接替代文件复制，节省磁盘空间
+  # 优化 by RaynLiu - master 节点使用软链接，slave 节点复制文件
+  
+  # Master 节点：创建软链接（节省空间）
+  - name: Master节点 - 创建软链接到安装包
+    file:
+      src: '{{paths.base_file}}/packages/{{ item }}'
+      dest: '{{paths.package}}/{{ item }}'
+      state: link
+      force: yes
+    with_items:
+      - jdk-8u261-linux-x64.tar.gz
+      - scala-2.13.0-M4.tgz
+      - mysql-connector-java-5.1.47.jar
+      - get-pip.py
+      - mysql-community-common-5.7.30-1.el7.x86_64.rpm
+      - mysql-community-libs-5.7.30-1.el7.x86_64.rpm
+      - mysql-community-libs-compat-5.7.30-1.el7.x86_64.rpm
+      - mysql-community-client-5.7.30-1.el7.x86_64.rpm
+      - mysql-community-server-5.7.30-1.el7.x86_64.rpm
+      - mysql-community-devel-5.7.30-1.el7.x86_64.rpm
+      - mysql-community-embedded-5.7.30-1.el7.x86_64.rpm
+      - mysql-community-embedded-compat-5.7.30-1.el7.x86_64.rpm
+      - mysql-community-embedded-devel-5.7.30-1.el7.x86_64.rpm
+      - RPM-GPG-KEY-cloudera
+      - cloudera-manager-daemons-6.2.0-968826.el7.x86_64.rpm
+      - cloudera-manager-agent-6.2.0-968826.el7.x86_64.rpm
+      - my.cnf
+    when: inventory_hostname in groups['master_node']
+    ignore_errors: yes
+
+  # Slave 节点：复制文件（确保文件存在）
+  - name: Slave节点 - 复制安装包文件
     copy:
-      src: '{{paths.base_file}}/packages/'
-      dest: '{{paths.package}}'
+      src: '{{paths.base_file}}/packages/{{ item }}'
+      dest: '{{paths.package}}/{{ item }}'
       owner: root
       group: root
-      mode: u=rwx,g=rwx,o=rwx
+      mode: '0755'
+    with_items:
+      - jdk-8u261-linux-x64.tar.gz
+      - scala-2.13.0-M4.tgz
+      - mysql-connector-java-5.1.47.jar
+      - get-pip.py
+      - mysql-community-common-5.7.30-1.el7.x86_64.rpm
+      - mysql-community-libs-5.7.30-1.el7.x86_64.rpm
+      - mysql-community-libs-compat-5.7.30-1.el7.x86_64.rpm
+      - mysql-community-client-5.7.30-1.el7.x86_64.rpm
+      - mysql-community-server-5.7.30-1.el7.x86_64.rpm
+      - mysql-community-devel-5.7.30-1.el7.x86_64.rpm
+      - mysql-community-embedded-5.7.30-1.el7.x86_64.rpm
+      - mysql-community-embedded-compat-5.7.30-1.el7.x86_64.rpm
+      - mysql-community-embedded-devel-5.7.30-1.el7.x86_64.rpm
+      - RPM-GPG-KEY-cloudera
+      - cloudera-manager-daemons-6.2.0-968826.el7.x86_64.rpm
+      - cloudera-manager-agent-6.2.0-968826.el7.x86_64.rpm
+      - my.cnf
+    when: inventory_hostname in groups['slave_node']
+    ignore_errors: yes
+
+  - name: 记录文件分发日志
+    shell: |
+      echo "========== 文件分发 $(date) ==========" >> /var/log/cdh_deploy.log
+      ls -lh {{paths.package}} >> /var/log/cdh_deploy.log
+    ignore_errors: yes
 
   - name: 创建目录 /usr/share/java
     file:

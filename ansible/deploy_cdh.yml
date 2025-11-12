@@ -5,8 +5,8 @@
 # function: 自动部署搭建 CDH 集群
 # 版本要求:
 # CDH 6.2.0
-# Ansible 2.8.12
-# Python 2.7.5
+# Ansible 2.8.12+
+# Python 3.8+ (兼容 Python 2.7.5)
 
 # 约定：手动上传的安装包和执行 ansible 必须在同一个节点
 # 路径1： /opt/base_file/packages
@@ -18,8 +18,9 @@
 # ansible 安装：sudo yum -y install ansible
 # 检查 ansible 版本：ansible --version
 
-# python 模块要求：
-# PyMySQL - 安装命令：pip install pymysql
+# Python 模块要求：
+# PyMySQL - 安装命令：pip3 install pymysql
+# 注意：脚本会自动安装 Python 3.8+ 和所需依赖
 
 # hosts 组配置 /etc/ansible/hosts
 
@@ -31,13 +32,34 @@
 
 
 
+# 部署前检查
+- hosts: all_node
+  gather_facts: F
+  remote_user: root
+  
+  tasks:
+    - name: 创建日志目录
+      file:
+        path: /var/log
+        state: directory
+        mode: '0755'
+      ignore_errors: yes
+    
+    - name: 初始化部署日志
+      shell: |
+        echo "========================================" >> /var/log/cdh_deploy.log
+        echo "CDH集群部署开始: $(date)" >> /var/log/cdh_deploy.log
+        echo "主机名: {{ inventory_hostname }}" >> /var/log/cdh_deploy.log
+        echo "========================================" >> /var/log/cdh_deploy.log
+      ignore_errors: yes
+
 # 基础环境配置
 - hosts: all_node
   # 开启debug
   gather_facts: F
   vars:
     # 本地 yum 源节点
-    local_yum_repo: cdh1
+    local_yum_repo: node01
     # 各种路径
     paths:
       base_file: /opt/base_file
@@ -108,7 +130,7 @@
   gather_facts: F
   vars:
     # 本地 yum 源节点
-    local_yum_repo: cdh1
+    local_yum_repo: node01
     # 各种路径
     paths:
       package: /opt/setup_cdh

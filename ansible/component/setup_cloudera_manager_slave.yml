@@ -9,20 +9,65 @@
 
   # 安装 yum 源的 GPG key
   # https://docs.cloudera.com/documentation/enterprise/6/release-notes/topics/rg_cm_6_version_download.html
-  - name: 安装 yum 源的 GPG key
+  - name: 安装 yum 源的 GPG key（使用本地文件）
     rpm_key:
       state: present
-      key: https://archive.cloudera.com/cm6/6.3.1/redhat7/yum/RPM-GPG-KEY-cloudera
+      key: /opt/setup_cdh/RPM-GPG-KEY-cloudera
+    ignore_errors: yes
 
+  - name: 检查本地 yum 源是否可用
+    uri:
+      url: http://node01/cloudera-repos/cm6/repodata/repomd.xml
+      method: HEAD
+      status_code: 200
+    register: local_repo_check
+    ignore_errors: yes
 
-  - name: yum 方式安装 cloudera-manager-daemons、cloudera-manager-agent
+  - name: yum 方式安装 cloudera-manager-daemons、cloudera-manager-agent（如果本地源可用）
     yum:
       name:
         - cloudera-manager-daemons
         - cloudera-manager-agent
       state: present
+      disablerepo: epel
+    when: local_repo_check.status == 200
+    ignore_errors: yes
 
-  - name: 启动 cloudera-scm-agent
+  - name: RPM 方式安装 cloudera-manager（如果 yum 源不可用，从本地文件安装）
+    shell: |
+      rpm -ivh --force --nodeps /opt/setup_cdh/cloudera-manager-daemons-*.rpm || true
+      rpm -ivh --force --nodeps /opt/setup_cdh/cloudera-manager-agent-*.rpm || true
+    when: local_repo_check.status != 200 or local_repo_check.failed
+    ignore_errors: yes
+
+  # ⚠️ 关键修复：配置 Agent 指向 CM Server
+  - name: 配置 cloudera-scm-agent 连接到 CM Server
+    lineinfile:
+      path: /etc/cloudera-scm-agent/config.ini
+      regexp: '^server_host='
+      line: 'server_host=node01'
+      state: present
+      create: yes
+
+  - name: 确保配置文件中有 server_port
+    lineinfile:
+      path: /etc/cloudera-scm-agent/config.ini
+      regexp: '^server_port='
+      line: 'server_port=7182'
+      insertafter: '^server_host='
+      state: present
+
+  - name: 验证 Agent 配置
+    shell: grep '^server_host=' /etc/cloudera-scm-agent/config.ini
+    register: agent_config_check
+    changed_when: false
+
+  - name: 显示 Agent 配置
+    debug:
+      msg: "Agent 配置: {{ agent_config_check.stdout }}"
+
+  - name: 启动 cloudera-scm-agent 并设置开机自启动
     service:
       name: cloudera-scm-agent
       state: started
+      enabled: yes
