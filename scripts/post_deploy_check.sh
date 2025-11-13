@@ -40,26 +40,38 @@ check_cm_server() {
     local max_wait=300  # 最多等待5分钟
     local waited=0
     local interval=10
+    local port_reported=0  # 标记是否已报告端口监听
+    
+    echo -n "等待 CM Server 启动"
     
     while [ $waited -lt $max_wait ]; do
         # 检查端口
         if netstat -tlnp 2>/dev/null | grep -q ":7180"; then
-            log_info "CM Server 端口 7180 已监听"
+            # 只在第一次检测到端口时输出
+            if [ $port_reported -eq 0 ]; then
+                echo ""  # 换行
+                log_info "CM Server 端口 7180 已监听"
+                echo -n "等待 Jetty 完全启动"
+                port_reported=1
+            fi
             
             # 检查日志
             if journalctl -u cloudera-scm-server -n 50 --no-pager 2>/dev/null | grep -q "Started Jetty server"; then
+                echo ""  # 换行
                 log_info "CM Server 已完全启动！"
                 return 0
             else
-                log_warn "CM Server 端口已监听，但Jetty尚未完全启动..."
+                echo -n "."  # 静默等待，只显示进度点
             fi
         else
-            echo -n "."
+            echo -n "."  # 等待端口监听
         fi
         
         sleep $interval
         waited=$((waited + interval))
     done
+    
+    echo ""  # 换行
     
     log_error "CM Server 启动超时（等待了 ${max_wait} 秒）"
     return 1

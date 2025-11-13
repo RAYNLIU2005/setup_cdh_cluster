@@ -148,13 +148,14 @@
         pause:
           seconds: 8
           
-      - name: 验证 MySQL 已启动
+      - name: ⏳ 验证 MySQL 安全模式已启动（静默检查中...）
         shell: mysqladmin ping 2>/dev/null
         register: mysql_ping
         retries: 10
         delay: 1
         until: mysql_ping.rc == 0
         ignore_errors: yes
+        no_log: true
         
       - name: 重置密码
         shell: |

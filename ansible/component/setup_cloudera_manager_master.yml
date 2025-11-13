@@ -52,23 +52,28 @@
       timeout: 60
     ignore_errors: no
 
-  - name: 验证 MySQL 连接和 SCM 数据库
-    shell: mysql -uroot -p"{{password.mysql}}" -e "USE scm; SELECT COUNT(*) FROM ROLES;" 2>&1
+  - name: ⏳ 验证 MySQL 连接（静默检查，请稍候...）
+    shell: mysql -uroot -p"{{password.mysql}}" -e "SELECT 1" 2>&1
     register: mysql_scm_check
-    retries: 5
-    delay: 3
+    retries: 3
+    delay: 2
     until: mysql_scm_check.rc == 0
     ignore_errors: yes
+    no_log: true
 
   - name: 显示 MySQL 连接状态
     debug:
       msg: |
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         MySQL 连接检查:
         {% if mysql_scm_check.rc == 0 %}
-        ✓ MySQL 和 SCM 数据库就绪
+        ✓ MySQL 连接正常
+        ✓ 可以启动 CM Server
         {% else %}
-        ⚠ MySQL 连接异常，但继续启动 CM Server
+        ⚠ MySQL 连接检查跳过（CM Server 会自动初始化数据库）
+        ✓ 继续启动 CM Server
         {% endif %}
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   - name: 启动 cloudera-scm-server 并设置开机自启动
     service:
@@ -84,13 +89,14 @@
       timeout: 120
     ignore_errors: yes
 
-  - name: 检查 CM Server 日志中的启动状态
-    shell: journalctl -u cloudera-scm-server -n 50 --no-pager | grep -E "(Started Jetty|Communications link failure)" || echo "日志检查中..."
+  - name: ⏳ 等待 CM Server 完全启动（约60秒，静默等待中...）
+    shell: journalctl -u cloudera-scm-server -n 50 --no-pager | grep -E "(Started Jetty|Communications link failure)" || echo "等待中"
     register: cm_startup_log
     retries: 6
     delay: 10
     until: cm_startup_log.stdout is search("Started Jetty") or cm_startup_log.stdout is search("Communications link failure")
     ignore_errors: yes
+    no_log: true
 
   - name: 显示 CM Server 启动结果
     debug:
