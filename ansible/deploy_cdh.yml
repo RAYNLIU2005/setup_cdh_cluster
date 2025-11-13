@@ -1,28 +1,41 @@
 ---
-# 运行样例：ansible-playbook /opt/auto-deployment/setup_cdh_cluster/ansible/deploy_cdh.yml
-# author: Jesse.liu
-# date: 2020-07-18
-# function: 自动部署搭建 CDH 集群
-# 版本要求:
-# CDH 6.2.0
-# Ansible 2.8.12+
-# Python 3.8+ (兼容 Python 2.7.5)
+###############################################################################
+#                                                                             #
+#           CDH 6.2.0 自动化部署系统                                          #
+#           Cloudera Data Hub Automated Deployment System                    #
+#                                                                             #
+###############################################################################
+#
+# 🎯 系统信息
+#   版本: v2.5.0
+#   作者: RaynLiu (liuyu1_j6go@stu.cqie.edu.cn)
+#   日期: 2025-11-13
+#   许可: MIT License
+#
+# 📋 支持的版本
+#   • CDH 6.2.0
+#   • Ansible 2.8.12+
+#   • Python 3.8+ (兼容 Python 2.7.5)
+#   • CentOS 7.x
+#
+# 🚀 快速开始
+#   make full-deploy  # 完整部署（推荐）
+#   make deploy       # 仅部署集群
+#
+# 📦 安装包路径（自动管理）
+#   /opt/base_file/packages  - 软件包
+#   /opt/base_file/parcels   - CDH Parcel 包
+#
+# 🔧 配置文件
+#   /etc/ansible/hosts       - Ansible inventory
+#   .env                     - 环境变量配置
+#
+# 📚 文档
+#   README.md               - 完整文档
+#   docs/                   - 详细文档
+#
+###############################################################################
 
-# 约定：手动上传的安装包和执行 ansible 必须在同一个节点
-# 路径1： /opt/base_file/packages
-# 路径2： /opt/base_file/parcels
-
-
-# 一定要修改 local_yum_repo 变量
-
-# ansible 安装：sudo yum -y install ansible
-# 检查 ansible 版本：ansible --version
-
-# Python 模块要求：
-# PyMySQL - 安装命令：pip3 install pymysql
-# 注意：脚本会自动安装 Python 3.8+ 和所需依赖
-
-# hosts 组配置 /etc/ansible/hosts
 
 
 
@@ -31,26 +44,70 @@
 
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# 部署初始化：显示横幅和环境检查
+# ═══════════════════════════════════════════════════════════════════════════
+- hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: 🚀 显示部署横幅
+      debug:
+        msg: |
+          
+          ╔═══════════════════════════════════════════════════════════════════════════╗
+          ║                                                                           ║
+          ║                    CDH 6.2.0 自动化部署系统                                ║
+          ║                Cloudera Data Hub Deployment System                        ║
+          ║                                                                           ║
+          ╚═══════════════════════════════════════════════════════════════════════════╝
+          
+          📊 部署信息
+          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            版本        CDH 6.2.0 + CM 6.2.0
+            部署时间    {{ lookup('pipe', 'date "+%Y-%m-%d %H:%M:%S"') }}
+            执行节点    {{ inventory_hostname }}
+            部署模式    生产环境 (Production)
+          
+          🎯 部署阶段
+          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            ① 环境准备       → 系统优化、软件安装
+            ② MySQL 部署     → 数据库初始化
+            ③ CM Server     → Cloudera Manager 安装
+            ④ Agent 部署    → 集群节点配置
+            ⑤ 服务启动      → 启动所有服务
+          
+          ⏱  预计耗时: 15-25 分钟
+          
+          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          
 
-# 部署前检查
+# ═══════════════════════════════════════════════════════════════════════════
+# 阶段 1: 环境准备和检查
+# ═══════════════════════════════════════════════════════════════════════════
 - hosts: all_node
   gather_facts: F
   remote_user: root
   
   tasks:
-    - name: 创建日志目录
+    - name: 📁 创建日志目录
       file:
         path: /var/log
         state: directory
         mode: '0755'
       ignore_errors: yes
     
-    - name: 初始化部署日志
+    - name: 📝 初始化部署日志
       shell: |
-        echo "========================================" >> /var/log/cdh_deploy.log
-        echo "CDH集群部署开始: $(date)" >> /var/log/cdh_deploy.log
-        echo "主机名: {{ inventory_hostname }}" >> /var/log/cdh_deploy.log
-        echo "========================================" >> /var/log/cdh_deploy.log
+        echo "╔═══════════════════════════════════════════════════════════╗" >> /var/log/cdh_deploy.log
+        echo "║  CDH 集群部署日志                                          ║" >> /var/log/cdh_deploy.log
+        echo "╚═══════════════════════════════════════════════════════════╝" >> /var/log/cdh_deploy.log
+        echo "" >> /var/log/cdh_deploy.log
+        echo "⏰ 部署开始: $(date '+%Y-%m-%d %H:%M:%S')" >> /var/log/cdh_deploy.log
+        echo "🖥  主机名: {{ inventory_hostname }}" >> /var/log/cdh_deploy.log
+        echo "👤 用户: $(whoami)" >> /var/log/cdh_deploy.log
+        echo "📍 IP地址: $(hostname -I | awk '{print $1}')" >> /var/log/cdh_deploy.log
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >> /var/log/cdh_deploy.log
+        echo "" >> /var/log/cdh_deploy.log
       ignore_errors: yes
 
 # 基础环境配置
