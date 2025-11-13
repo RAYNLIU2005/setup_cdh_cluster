@@ -31,6 +31,7 @@
   - [📦 安装包准备](#-安装包准备)
 - [🚀 快速开始流程](#-快速开始流程)
 - [📋 集群节点信息](#-集群节点信息)
+- [🔑 密码配置说明](#-密码配置说明)
 - [🔧 环境准备（手动配置）](#-环境准备手动配置)
 - [🌐 访问 Cloudera Manager Web 界面](#-访问-cloudera-manager-web-界面)
 - [🛠️ 常见问题一键修复（v2.2 新增）](#️-常见问题一键修复v22-新增)
@@ -386,6 +387,29 @@ Number of key(s) added: 1
 目前正在设置node03节点的系统环境
 ```
 
+**步骤 6.1: 性能优化（推荐）**
+
+> ⚡ **优化系统性能，避免 Cloudera Manager 部署时的警告**
+
+在部署 CDH 之前，建议优化所有节点的系统性能：
+
+```bash
+# 在 node01 上执行，自动优化所有节点
+cd /root/setup_cdh_cluster
+make optimize-all-nodes
+```
+
+**优化内容：**
+- ✅ 禁用透明大页（Transparent Huge Pages）
+- ✅ 调整 swappiness 值为 1（Cloudera 推荐值）
+
+**效果：**
+- 创建集群时不会再看到性能警告
+- 提升 CDH 集群运行性能
+- 配置永久生效（重启后仍有效）
+
+> 💡 **提示**：如果使用 `make prepare-env` 或 `make full-deploy`，会自动执行性能优化，无需手动运行。
+
 #### 步骤 7: 【可选】VirtualBox 虚拟机磁盘扩容
 
 > 💾 **如果虚拟机磁盘空间不足，建议在部署 CDH 之前进行扩容（20GB → 100GB）**
@@ -468,6 +492,55 @@ http://192.168.56.151:7180
 | Master  | 192.168.56.151  | node01 | CM Server + NameNode + ResourceManager |
 | Worker | 192.168.56.152 | node02 | CM Agent + DataNode + NodeManager |
 | Worker | 192.168.56.153 | node03 | CM Agent + DataNode + NodeManager |
+
+---
+
+## 🔑 密码配置说明
+
+> 🎯 **重要**：为了简化部署和测试，本项目所有密码统一设置为 `123456`
+
+### 密码列表
+
+| 类型 | 用户名 | 密码 | 说明 |
+| --- | --- | --- | --- |
+| **SSH 登录** | root | 123456 | 所有节点的 root 密码 |
+| **MySQL Root** | root | 123456 | MySQL 数据库 root 密码 |
+| **Cloudera Manager** | scm | 123456 | SCM 数据库密码 |
+| **Activity Monitor** | amon | 123456 | AMON 数据库密码 |
+| **Reports Manager** | rman | 123456 | RMAN 数据库密码 |
+| **Hive** | hive | 123456 | Hive 数据库密码 |
+| **Sentry** | sentry | 123456 | Sentry 数据库密码 |
+| **Navigator** | nav | 123456 | Navigator 数据库密码 |
+| **Navigator Metadata** | navms | 123456 | Navigator Metadata 数据库密码 |
+| **Oozie** | oozie | 123456 | Oozie 数据库密码 |
+| **Hue** | hue | 123456 | Hue 数据库密码 |
+
+### 修改密码
+
+如需修改密码，请编辑以下文件：
+
+```bash
+# 1. 编辑环境配置模板
+vi /root/setup_cdh_cluster/.env.template
+
+# 修改以下配置项:
+MYSQL_ROOT_PASSWORD=你的密码
+DB_PASSWORD_SCM=你的密码
+DB_PASSWORD_AMON=你的密码
+# ... 其他密码 ...
+
+# 2. 编辑 Ansible 配置
+vi /root/setup_cdh_cluster/ansible/deploy_cdh.yml
+
+# 在 password 部分修改:
+password:
+  mysql: 你的密码
+  scm: 你的密码
+  amon: 你的密码
+  # ... 其他密码 ...
+```
+
+> ⚠️ **安全提示**：生产环境请使用复杂密码并妥善保管！
 
 ---
 

@@ -3,98 +3,87 @@
 # email: liuyu1_j6go@stu.cqie.edu.cn
 # date: 2025-11-12
 
-.PHONY: help check clean deploy verify status start stop restart force-stop nodes check-nodes add-nodes fix-agent fix-all distribute-parcel start-all stop-all health ps ports logs install-ansible prepare-env fix-yum diagnose-yum setup-python setup-ssh fix-permissions reset-mysql cleanup-copies quick-deploy full-deploy check-env health-check health-check-v2 diagnose fix-cm-mysql restart-services install-deps test test-env test-env-v2 test-full docker-build docker-up docker-down docker-logs docker-exec docker-clean env-file post-check init test-ssh check-disk show-format check-delete delall sync-nodes
+.PHONY: help check clean deploy verify status start stop restart force-stop nodes check-nodes add-nodes fix-agent fix-all distribute-parcel start-all stop-all health ps ports logs install-ansible prepare-env fix-yum diagnose-yum setup-python setup-ssh fix-permissions reset-mysql cleanup-copies quick-deploy full-deploy check-env health-check health-check-v2 diagnose fix-cm-mysql restart-services install-deps test test-env test-env-v2 test-full docker-build docker-up docker-down docker-logs docker-exec docker-clean env-file post-check init test-ssh check-disk show-format check-delete delall sync-nodes optimize-performance optimize-all-nodes setup-parcel-repo
 
 PROJECT_DIR := /root/setup_cdh_cluster
 INVENTORY := $(PROJECT_DIR)/ansible/node_group/hosts
 PLAYBOOK := $(PROJECT_DIR)/ansible/deploy_cdh.yml
 
 help:
-	@echo "=========================================="
-	@echo "  CDH集群部署管理系统"
-	@echo "  Copyright © 2025 RaynLiu"
-	@echo "  保留所有权利 All Rights Reserved"
-	@echo "=========================================="
+	@echo "╔══════════════════════════════════════════════════════════════════╗"
+	@echo "║                   CDH 集群部署管理系统 v2.2                      ║"
+	@echo "║                    Copyright © 2025 RaynLiu                      ║"
+	@echo "║                  Email: liuyu1_j6go@stu.cqie.edu.cn             ║"
+	@echo "╚══════════════════════════════════════════════════════════════════╝"
 	@echo ""
-	@echo "环境准备命令:"
-	@echo "  make init            - ⭐ 交互式环境初始化（推荐首次使用，灵感来自 playground）"
-	@echo "  make prepare-env     - 🚀 一键准备所有环境（自动化版本）"
-	@echo "  make setup-ssh       - 🔑 配置 SSH 免密登录"
-	@echo "  make test-ssh        - 🔍 测试 SSH 免密登录状态"
-	@echo "  make sync-nodes      - 📡 同步项目到其他节点（参考 playground）"
-	@echo "  make check-disk      - 💾 检查磁盘空间（推荐部署前运行）"
-	@echo "  make fix-yum         - 🔧 修复 YUM 源问题"
-	@echo "  make diagnose-yum    - 🔍 YUM 源诊断（网络、配置、缓存）"
-	@echo "  make setup-python    - 安装配置 Python 3 环境"
-	@echo "  make install-ansible - 安装 Ansible"
-	@echo "  make check-env       - 检查环境是否准备就绪"
+	@echo "🔑 默认密码: 123456 (SSH/MySQL/所有组件数据库)"
 	@echo ""
-	@echo "部署管理命令:"
-	@echo "  make check           - 检查磁盘空间和系统状态"
-	@echo "  make clean           - 清理系统临时文件"
-	@echo "  make deploy          - 部署 CDH 集群"
-	@echo "  make verify          - 验证部署状态"
-	@echo "  make cleanup-copies  - 清理复制文件，释放空间"
+	@echo "╔══════════════════════════════════════════════════════════════════╗"
+	@echo "║ 🚀 快速开始 (推荐新手使用)                                       ║"
+	@echo "╚══════════════════════════════════════════════════════════════════╝"
+	@echo "  make init            ⭐ 交互式环境初始化 (使用 playground)"
+	@echo "  make full-deploy     🚀 一键完整部署 (环境准备+部署+验证)"
+	@echo "  make quick-deploy    ⚡ 快速重新部署 (清理+部署+验证)"
 	@echo ""
-	@echo "集群管理命令:"
-	@echo "  make status          - 查看集群服务状态"
-	@echo "  make start           - 启动集群所有服务"
-	@echo "  make stop            - 停止集群所有服务"
-	@echo "  make restart         - 重启集群所有服务"
-	@echo "  make force-stop      - 强制停止所有服务（清理残留进程）"
-	@echo "  make nodes           - 查看所有节点状态（美化表格）"
-	@echo "  make check-nodes     - 检查集群节点状态（网络、SSH、Agent）"
-	@echo "  make add-nodes       - 添加节点到集群（node02、node03）"
-	@echo "  make fix-agent       - 🔧 修复 Agent 配置错误"
-	@echo "  make fix-all         - 🛠️  修复所有已知问题（推荐）"
-	@echo "  make distribute-parcel - 📦 手动分发 CDH Parcel"
-	@echo "  make health          - 运行健康检查脚本"
-	@echo "  make health-check-v2 - 优化版健康检查（美化输出）"
-	@echo "  make ps              - 查看所有 Cloudera 相关进程"
-	@echo "  make ports           - 检查所有服务端口"
-	@echo "  make logs            - 查看主要服务日志"
+	@echo "╔══════════════════════════════════════════════════════════════════╗"
+	@echo "║ ⚙️  环境准备命令                                                 ║"
+	@echo "╚══════════════════════════════════════════════════════════════════╝"
+	@echo "  make prepare-env           🔧 一键准备所有环境 (自动化)"
+	@echo "  make optimize-all-nodes    ⚡ 优化所有节点性能 (禁用THP/调整swap)"
+	@echo "  make setup-parcel-repo     📦 配置 Parcel HTTP 仓库"
+	@echo "  make setup-ssh             🔑 配置 SSH 免密登录"
+	@echo "  make test-ssh              🔍 测试 SSH 连接状态"
+	@echo "  make check-disk            💾 检查磁盘空间"
+	@echo "  make fix-yum               🔧 修复 YUM 源问题"
+	@echo "  make check-env             ✅ 检查环境是否就绪"
 	@echo ""
-	@echo "监控诊断命令:"
-	@echo "  make post-check      - 部署后完整检查（推荐部署后运行）"
-	@echo "  make health          - 健康检查（全面检查集群状态）"
-	@echo "  make health-check    - 新版健康检查（服务依赖分析）"
-	@echo "  make health-check-v2 - 优化版健康检查（美化输出）"
-	@echo "  make diagnose        - 深度诊断（依赖关系+错误分析）"
-	@echo "  make ps              - 查看进程"
-	@echo "  make ports           - 查看端口占用"
-	@echo "  make logs            - 查看部署日志"
-	@echo "  make ports           - 🔌 查看端口占用"
-	@echo "  make logs            - 📝 查看部署日志"
+	@echo "╔══════════════════════════════════════════════════════════════════╗"
+	@echo "║ 📦 部署管理命令                                                   ║"
+	@echo "╚══════════════════════════════════════════════════════════════════╝"
+	@echo "  make check                 🔍 检查磁盘空间和系统状态"
+	@echo "  make deploy                🚀 部署 CDH 集群"
+	@echo "  make verify                ✅ 验证部署状态"
+	@echo "  make cleanup-copies        🧹 清理复制文件，释放空间"
 	@echo ""
-	@echo "快捷命令:"
-	@echo "  make full-deploy     - 完整部署流程（环境准备+部署+验证）"
-	@echo "  make quick-deploy    - 快速部署（清理+部署+验证）"
+	@echo "╔══════════════════════════════════════════════════════════════════╗"
+	@echo "║ 🎛️  集群管理命令                                                 ║"
+	@echo "╚══════════════════════════════════════════════════════════════════╝"
+	@echo "  make status                📊 查看集群服务状态"
+	@echo "  make start                 ▶️  启动集群所有服务"
+	@echo "  make stop                  ⏹️  停止集群所有服务"
+	@echo "  make restart               🔄 重启集群所有服务"
+	@echo "  make nodes                 🖥️  查看所有节点状态"
+	@echo "  make check-nodes           🔍 检查节点健康状况"
+	@echo "  make add-nodes             ➕ 添加节点到集群"
 	@echo ""
-	@echo "故障修复命令:"
-	@echo "  make fix-permissions - 🔧 修复所有脚本执行权限"
-	@echo "  make reset-mysql     - 🔑 重置 MySQL Root 密码"
-	@echo "  make fix-cm-mysql    - 🔧 修复 CM Server MySQL 连接"
-	@echo "  make restart-services - 🔄 按正确顺序重启所有服务"
+	@echo "╔══════════════════════════════════════════════════════════════════╗"
+	@echo "║ 🔧 故障修复命令                                                   ║"
+	@echo "╚══════════════════════════════════════════════════════════════════╝"
+	@echo "  make fix-all               🛠️  修复所有已知问题 (推荐)"
+	@echo "  make fix-agent             🔧 修复 Agent 配置错误"
+	@echo "  make reset-mysql           🔑 重置 MySQL 密码为 123456"
+	@echo "  make fix-cm-mysql          🔧 修复 CM Server MySQL 连接"
+	@echo "  make fix-permissions       🔓 修复脚本执行权限"
+	@echo "  make restart-services      🔄 按正确顺序重启服务"
 	@echo ""
-	@echo "危险操作命令:"
-	@echo "  make check-delete    - 🔍 删除前安全检查（检查保护目录和服务）"
-	@echo "  make delall          - 💣 完全删除 CDH 集群（不可恢复，需要确认）"
+	@echo "╔══════════════════════════════════════════════════════════════════╗"
+	@echo "║ 📊 监控诊断命令                                                   ║"
+	@echo "╚══════════════════════════════════════════════════════════════════╝"
+	@echo "  make post-check            ✅ 部署后完整检查 (推荐)"
+	@echo "  make health-check-v2       💚 优化版健康检查"
+	@echo "  make diagnose              🔬 深度诊断 (依赖分析)"
+	@echo "  make ps                    👁️  查看 Cloudera 进程"
+	@echo "  make ports                 🔌 查看服务端口占用"
+	@echo "  make logs                  📝 查看部署日志"
 	@echo ""
-	@echo "测试命令:"
-	@echo "  make install-deps    - 📦 安装Python依赖"
-	@echo "  make test-env        - 🧪 运行环境测试"
-	@echo "  make test-full       - 🧪 运行完整测试（需要先部署）"
+	@echo "╔══════════════════════════════════════════════════════════════════╗"
+	@echo "║ ⚠️  危险操作命令 (谨慎使用)                                      ║"
+	@echo "╚══════════════════════════════════════════════════════════════════╝"
+	@echo "  make check-delete          🔍 删除前安全检查"
+	@echo "  make delall                💣 完全删除 CDH 集群 (不可恢复)"
 	@echo ""
-	@echo "Docker命令:"
-	@echo "  make docker-build    - 🐳 构建Docker镜像"
-	@echo "  make docker-up       - 🐳 启动Docker容器"
-	@echo "  make docker-down     - 🐳 停止Docker容器"
-	@echo "  make docker-logs     - 🐳 查看Docker日志"
-	@echo "  make docker-exec     - 🐳 进入Docker容器"
-	@echo "  make docker-clean    - 🐳 清理Docker环境"
-	@echo ""
-	@echo "配置命令:"
-	@echo "  make env-file        - 📝 创建.env配置文件"
+	@echo "💡 提示: 使用 'make <command>' 执行命令"
+	@echo "📖 文档: https://github.com/RaynLiu/setup_cdh_cluster"
 	@echo ""
 
 # ==========================================
@@ -119,22 +108,28 @@ prepare-env:
 	@echo "  Copyright © 2025 RaynLiu"
 	@echo "=========================================="
 	@echo ""
-	@echo "[1/5] 修复 YUM 源..."
+	@echo "[1/7] 修复 YUM 源..."
 	@$(MAKE) fix-yum
 	@echo ""
-	@echo "[2/5] 安装 Python 3..."
+	@echo "[2/7] 安装 Python 3..."
 	@$(MAKE) setup-python
 	@echo ""
-	@echo "[3/5] 安装 Ansible..."
+	@echo "[3/7] 安装 Ansible..."
 	@$(MAKE) install-ansible
 	@echo ""
-	@echo "[4/5] 修复所有节点 YUM 源..."
+	@echo "[4/7] 修复所有节点 YUM 源..."
 	@for node in node01 node02 node03; do \
 		echo "  修复 $$node..."; \
 		ssh $$node "rm -f /etc/yum.repos.d/*ansible*.repo && yum clean all" 2>/dev/null || true; \
 	done
 	@echo ""
-	@echo "[5/5] 检查环境..."
+	@echo "[5/7] 优化所有节点性能（禁用透明大页、调整swappiness）..."
+	@$(MAKE) optimize-all-nodes
+	@echo ""
+	@echo "[6/7] 配置 Parcel HTTP 仓库..."
+	@$(MAKE) setup-parcel-repo
+	@echo ""
+	@echo "[7/7] 检查环境..."
 	@$(MAKE) check-env
 	@echo ""
 	@echo "=========================================="
@@ -191,6 +186,24 @@ diagnose-yum:
 	@echo "==> YUM 源诊断..."
 	@chmod +x $(PROJECT_DIR)/scripts/diagnose_yum.sh
 	@$(PROJECT_DIR)/scripts/diagnose_yum.sh
+
+# 优化当前节点性能
+optimize-performance:
+	@echo "==> 优化当前节点性能..."
+	@chmod +x $(PROJECT_DIR)/scripts/optimize_system_performance.sh
+	@$(PROJECT_DIR)/scripts/optimize_system_performance.sh
+
+# 优化所有集群节点性能
+optimize-all-nodes:
+	@echo "==> 优化所有集群节点性能..."
+	@chmod +x $(PROJECT_DIR)/scripts/optimize_all_nodes.sh
+	@$(PROJECT_DIR)/scripts/optimize_all_nodes.sh
+
+# 配置 Parcel HTTP 仓库
+setup-parcel-repo:
+	@echo "==> 配置 Parcel HTTP 仓库..."
+	@chmod +x $(PROJECT_DIR)/scripts/setup_parcel_repo.sh
+	@$(PROJECT_DIR)/scripts/setup_parcel_repo.sh
 
 # 安装配置 Python 3
 setup-python:

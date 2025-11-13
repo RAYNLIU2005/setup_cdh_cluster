@@ -145,7 +145,7 @@
       cloudera_baseurl: https://archive.cloudera.com/cm6/6.3.1/redhat7/yum/
       cloudera_baseurl_local: "http://{{local_yum_repo}}/cloudera-repos/cm6/"
     password:
-      scm: SuperMan2020#h
+      scm: 123456
 
   remote_user: root
 
@@ -173,24 +173,24 @@
     paths:
       base_file: /opt/base_file
       package: /opt/setup_cdh
-    # 各种密码，注意新版 mysql 对密码有严格要求
+    # 各种密码，统一设置为 123456，方便测试和部署
     password:
-      mysql: Cloudera!20200801
+      mysql: 123456
       # cloudera manager server
-      scm: SuperMan2020#h
+      scm: 123456
       # activity monitor
-      amon: SuperMan2020#h
+      amon: 123456
       # Reports Manager
-      rman: SuperMan2020#h
-      hive: SuperMan2020#h
+      rman: 123456
+      hive: 123456
       # sentry server
-      sentry: SuperMan2020#h
+      sentry: 123456
       # cloudera navigator audit server
-      nav: SuperMan2020#h
+      nav: 123456
       # cloudera navigator metadata server
-      navms: SuperMan2020#h
-      oozie: SuperMan2020#h
-      hue: SuperMan2020#h
+      navms: 123456
+      oozie: 123456
+      hue: 123456
   remote_user: root
 
   tasks:
