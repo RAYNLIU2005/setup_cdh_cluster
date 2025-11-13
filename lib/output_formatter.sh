@@ -119,6 +119,16 @@ print_subheader() {
     echo ""
 }
 
+# 章节标题（用于步骤标题）
+print_section() {
+    local title="$1"
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}  $title${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+}
+
 # 成功标题
 print_success_header() {
     local title="$1"

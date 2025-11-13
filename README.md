@@ -63,7 +63,7 @@
 **⚡ 配置建议：**
 - ✅ **推荐配置**：4核CPU + 4GB内存（运行流畅）
 - ⚠️ **最低配置**：2核CPU + 2GB内存（可能卡顿）
-- 💾 **磁盘空间**：建议每个节点至少 40GB
+- 💾 **磁盘空间**：虚拟机默认 20GB，建议在 playground 初始化后扩容到 100GB（参考步骤 7）
 
 ### 📦 安装包准备
 
@@ -198,9 +198,11 @@ ls -lh /opt/base_file/parcels/
    ↓
 6. 使用 playground 初始化 (playground init) ⭐ 必须
    ↓
-7. 一键部署 (make deploy)
+7. 【可选】扩容虚拟机磁盘 (20GB → 100GB)
    ↓
-8. 访问 CM 界面 (http://192.168.56.151:7180)
+8. 一键部署 (make deploy)
+   ↓
+9. 访问 CM 界面 (http://192.168.56.151:7180)
 ```
 
 ### 📝 详细步骤
@@ -384,7 +386,60 @@ Number of key(s) added: 1
 目前正在设置node03节点的系统环境
 ```
 
-#### 步骤 7: 一键部署
+#### 步骤 7: 【可选】VirtualBox 虚拟机磁盘扩容
+
+> 💾 **如果虚拟机磁盘空间不足，建议在部署 CDH 之前进行扩容（20GB → 100GB）**
+
+**第一步：在 Windows 宿主机扩展虚拟磁盘**
+
+```powershell
+# 1. 完全关闭所有虚拟机（不是挂起）
+
+# 2. 在 Windows PowerShell (管理员) 中执行
+cd "C:\Program Files\Oracle\VirtualBox"
+
+# 3. 查看虚拟磁盘路径
+.\VBoxManage.exe list hdds
+
+# 4. 扩容虚拟磁盘到 100GB（替换为实际路径）
+.\VBoxManage.exe modifymedium disk "E:\你的路径\Node01.vdi" --resize 102400
+.\VBoxManage.exe modifymedium disk "E:\你的路径\Node02.vdi" --resize 102400
+.\VBoxManage.exe modifymedium disk "E:\你的路径\Node03.vdi" --resize 102400
+```
+
+**第二步：在 Linux 系统内扩展分区（一键完成所有节点）**
+
+```bash
+# 在 node01 上登录后执行以下一键脚本
+cd /root/setup_cdh_cluster
+
+# node01 扩容
+chmod +x scripts/expand_partition_fdisk.sh
+./scripts/expand_partition_fdisk.sh  # 输入 YES 和 yes，重启后执行：
+pvresize /dev/sda2 && lvextend -l +100%FREE /dev/centos/root && xfs_growfs /
+
+# node02 和 node03 一键扩容
+scp scripts/expand_partition_fdisk.sh node02:/root/
+scp scripts/expand_partition_fdisk.sh node03:/root/
+
+ssh node02 "chmod +x /root/expand_partition_fdisk.sh && echo -e 'YES\nyes' | /root/expand_partition_fdisk.sh"
+sleep 120  # 等待 node02 重启完成
+ssh node02 "pvresize /dev/sda2 && lvextend -l +100%FREE /dev/centos/root && xfs_growfs / && df -h /"
+
+ssh node03 "chmod +x /root/expand_partition_fdisk.sh && echo -e 'YES\nyes' | /root/expand_partition_fdisk.sh"
+sleep 120  # 等待 node03 重启完成
+ssh node03 "pvresize /dev/sda2 && lvextend -l +100%FREE /dev/centos/root && xfs_growfs / && df -h /"
+
+# 验证所有节点
+for node in node01 node02 node03; do
+    echo "========== $node =========="
+    ssh $node "df -h / | tail -1"
+done
+```
+
+> 💡 **提示**：扩容完成后，所有节点根分区应显示约 98GB 可用空间
+
+#### 步骤 8: 一键部署
 
 ```bash
 # 开始部署 CDH 集群
@@ -393,7 +448,7 @@ make deploy
 # 等待 30-60 分钟，部署会自动完成
 ```
 
-#### 步骤 8: 访问管理界面
+#### 步骤 9: 访问管理界面
 
 ```bash
 # 访问 Cloudera Manager

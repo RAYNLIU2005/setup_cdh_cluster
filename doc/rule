@@ -42,3 +42,79 @@ node03 | CHANGED | rc=0 >>
 [INFO] 服务停止完成
 [root@node01 setup_cdh_cluster]#
 优化集群的启停
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# 1. 复制脚本到 node02 和 node03
+scp /root/setup_cdh_cluster/scripts/expand_partition_fdisk.sh node02:/root/
+scp /root/setup_cdh_cluster/scripts/expand_partition_fdisk.sh node03:/root/
+
+# 2. 在 node02 上执行扩容
+ssh node02 "chmod +x /root/expand_partition_fdisk.sh && echo -e 'YES\nyes' | /root/expand_partition_fdisk.sh"
+
+# 等待 node02 重启完成（约 1-2 分钟）
+sleep 60
+
+# 3. 在 node02 上完成扩容
+ssh node02 "pvresize /dev/sda2 && lvextend -l +100%FREE /dev/centos/root && xfs_growfs / && df -h /"
+
+# 4. 在 node03 上执行扩容
+ssh node03 "chmod +x /root/expand_partition_fdisk.sh && echo -e 'YES\nyes' | /root/expand_partition_fdisk.sh"
+
+# 等待 node03 重启完成（约 1-2 分钟）
+sleep 60
+
+# 5. 在 node03 上完成扩容
+ssh node03 "pvresize /dev/sda2 && lvextend -l +100%FREE /dev/centos/root && xfs_growfs / && df -h /"
+
+# 6. 验证所有节点
+echo ""
+echo "========================================="
+echo "  所有节点扩容完成！验证结果："
+echo "========================================="
+for node in node01 node02 node03; do
+    echo ""
+    echo "========== $node =========="
+    ssh $node "df -h / | tail -1"
+done
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
