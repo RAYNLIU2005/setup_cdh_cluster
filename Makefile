@@ -256,11 +256,17 @@ check:
 	@echo "=========================================="
 	@echo ""
 	@echo "==> 检查环境..."
-	@./scripts/manage_cluster.sh check
+	@chmod +x $(PROJECT_DIR)/scripts/check_disk_space.sh
+	@$(PROJECT_DIR)/scripts/check_disk_space.sh
+	@echo "==> 检查节点连通性..."
+	@ansible all -i $(INVENTORY) -m ping
 
 clean:
 	@echo "==> 清理系统..."
-	@./scripts/manage_cluster.sh clean
+	@echo "清理临时文件..."
+	@rm -f /tmp/cdh_*.log 2>/dev/null || true
+	@rm -f /tmp/mysql_password_* 2>/dev/null || true
+	@echo "✓ 清理完成"
 
 deploy:
 	@echo "=========================================="
@@ -270,11 +276,13 @@ deploy:
 	@echo "=========================================="
 	@echo ""
 	@echo "==> 开始部署CDH集群..."
-	@./scripts/manage_cluster.sh deploy
+	@ansible-playbook -i $(INVENTORY) $(PLAYBOOK) || (echo "[ERROR] 部署失败" && exit 1)
+	@echo "[SUCCESS] 部署完成"
 
 verify:
 	@echo "==> 验证部署..."
-	@./scripts/manage_cluster.sh verify
+	@chmod +x $(PROJECT_DIR)/scripts/post_deploy_check.sh
+	@$(PROJECT_DIR)/scripts/post_deploy_check.sh
 
 start:
 	@echo "==> 启动集群..."
@@ -297,11 +305,16 @@ status:
 
 force-stop:
 	@echo "==> 强制停止所有服务..."
-	@./scripts/manage_cluster.sh force-stop
+	@echo "停止 Cloudera Manager..."
+	@systemctl stop cloudera-scm-server 2>/dev/null || true
+	@for node in node01 node02 node03; do ssh $$node "systemctl stop cloudera-scm-agent" 2>/dev/null || true; done
+	@echo "清理残留进程..."
+	@pkill -9 -f cloudera 2>/dev/null || true
+	@echo "✓ 强制停止完成"
 
 nodes:
 	@echo "==> 检查所有节点连通性..."
-	@./scripts/manage_cluster.sh nodes
+	@ansible all -i $(INVENTORY) -m ping
 
 # 检查集群节点状态
 check-nodes:
@@ -330,27 +343,36 @@ distribute-parcel:
 
 start-all:
 	@echo "==> 启动所有节点..."
-	@./scripts/manage_cluster.sh start-all
+	@chmod +x $(PROJECT_DIR)/scripts/cluster_control.sh
+	@$(PROJECT_DIR)/scripts/cluster_control.sh start
 
 stop-all:
 	@echo "==> 停止所有节点..."
-	@./scripts/manage_cluster.sh stop-all
+	@chmod +x $(PROJECT_DIR)/scripts/cluster_control.sh
+	@$(PROJECT_DIR)/scripts/cluster_control.sh stop
 
 health:
 	@echo "==> 执行健康检查..."
-	@./scripts/manage_cluster.sh health
+	@chmod +x $(PROJECT_DIR)/scripts/health_check_v2.sh
+	@$(PROJECT_DIR)/scripts/health_check_v2.sh
 
 ps:
 	@echo "==> 查看进程..."
-	@./scripts/manage_cluster.sh ps
+	@echo "Cloudera 相关进程:"
+	@ps aux | grep -E '(cloudera|mysql|httpd)' | grep -v grep || echo "无相关进程运行"
 
 ports:
 	@echo "==> 查看端口占用..."
-	@./scripts/manage_cluster.sh ports
+	@echo "CDH 相关端口:"
+	@netstat -tuln | grep -E '(3306|7180|7182|50070|8088|10000)' || echo "无相关端口监听"
 
 logs:
 	@echo "==> 查看日志..."
-	@./scripts/manage_cluster.sh logs
+	@echo "最近的部署日志:"
+	@tail -50 /var/log/cdh_deploy.log 2>/dev/null || echo "日志文件不存在"
+	@echo ""
+	@echo "CM Server 日志:"
+	@tail -20 /var/log/cloudera-scm-server/cloudera-scm-server.log 2>/dev/null || echo "日志文件不存在"
 
 # 快速部署（清理+部署+验证）
 quick-deploy: clean deploy verify
@@ -397,7 +419,11 @@ full-deploy: prepare-env check clean deploy verify
 # 清理复制文件，使用软链接替代
 cleanup-copies:
 	@echo "==> 清理复制文件，释放磁盘空间..."
-	@./scripts/manage_cluster.sh cleanup
+	@echo "清理 Parcel 缓存..."
+	@for node in node01 node02 node03; do \
+		ssh $$node "rm -rf /opt/cloudera/parcel-cache/*.parcel 2>/dev/null || true"; \
+	done
+	@echo "✓ 清理完成"
 
 # ==========================================
 # 故障修复命令
@@ -415,13 +441,13 @@ reset-mysql:
 	@chmod +x $(PROJECT_DIR)/scripts/reset_mysql_password.sh
 	@$(PROJECT_DIR)/scripts/reset_mysql_password.sh
 
-# 新版健康检查
+# 健康检查（使用优化版）
 health-check:
 	@echo "==> 执行健康检查..."
-	@chmod +x $(PROJECT_DIR)/scripts/health_check.sh
-	@$(PROJECT_DIR)/scripts/health_check.sh
+	@chmod +x $(PROJECT_DIR)/scripts/health_check_v2.sh
+	@$(PROJECT_DIR)/scripts/health_check_v2.sh
 
-# 优化版健康检查（美化输出）
+# 优化版健康检查（美化输出） - 别名
 health-check-v2:
 	@chmod +x $(PROJECT_DIR)/scripts/health_check_v2.sh
 	@$(PROJECT_DIR)/scripts/health_check_v2.sh
@@ -560,11 +586,21 @@ show-format:
 # 危险操作命令
 # ==========================================
 
-# 删除前安全检查
+# 删除前安全检查（已集成到 delete_cluster.sh 中）
 check-delete:
 	@echo "==> 删除前安全检查..."
-	@chmod +x $(PROJECT_DIR)/scripts/verify_safe_delete.sh
-	@$(PROJECT_DIR)/scripts/verify_safe_delete.sh
+	@echo ""
+	@echo "💡 提示：安全检查已集成到删除脚本中"
+	@echo "直接运行 'make delall' 即可，会自动进行安全检查"
+	@echo ""
+	@echo "或者查看将要删除的内容："
+	@echo "  • /opt/cloudera"
+	@echo "  • /var/lib/cloudera-scm-*"
+	@echo "  • /usr/java"
+	@echo "  • /usr/local/scala"
+	@echo ""
+	@echo "✓ 会保留: /opt/base_file（安装包）"
+	@echo ""
 
 # 完全删除 CDH 集群
 delall:
