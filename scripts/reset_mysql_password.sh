@@ -19,7 +19,7 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-NEW_PASSWORD="Cloudera!20200801"
+NEW_PASSWORD="123456"
 INITIAL_PASSWORD="123456"
 
 echo "=========================================="
@@ -28,7 +28,7 @@ echo "  Copyright © 2025 RaynLiu"
 echo "=========================================="
 echo ""
 
-log_info "目标密码: ${NEW_PASSWORD}"
+log_info "目标密码: 123456（统一密码，简单易记）"
 echo ""
 
 # 步骤 1: 检查 MySQL 是否运行
@@ -130,11 +130,12 @@ if mysql -uroot -p"${NEW_PASSWORD}" -e "SELECT 'SUCCESS' as status;" 2>/dev/null
     log_info "  ✓ 密码重置成功！"
     echo "=========================================="
     echo ""
-    echo "新密码: ${NEW_PASSWORD}"
+    echo "✓ MySQL Root 密码已设置为: 123456"
+    echo "✓ 所有 CDH 组件数据库密码也是: 123456"
     echo ""
     log_info "现在可以继续部署:"
     echo "  cd /root/setup_cdh_cluster"
-    echo "  make deploy"
+    echo "  make deploy 或 make full-deploy"
     echo ""
     
     # 清理提示文件
