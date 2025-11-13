@@ -22,6 +22,69 @@ source "$PROJECT_DIR/lib/output_formatter.sh" 2>/dev/null || {
 INVENTORY="$PROJECT_DIR/ansible/node_group/hosts"
 
 # ==========================================
+# 删除前安全检查
+# ==========================================
+pre_delete_check() {
+    print_header "删除前安全检查"
+    
+    # 检查 base_file 目录
+    log_step "验证 /opt/base_file 目录..."
+    if [ -d "/opt/base_file" ]; then
+        local file_count=$(ls -1 /opt/base_file 2>/dev/null | wc -l)
+        log_success "/opt/base_file 存在，包含 $file_count 个文件/目录"
+        log_warning "删除脚本会保留此目录"
+    else
+        log_warning "/opt/base_file 不存在"
+    fi
+    
+    # 检查要删除的目录
+    echo ""
+    log_step "扫描将要删除的目录..."
+    
+    local targets=(
+        "/opt/cloudera"
+        "/var/lib/cloudera-scm-server"
+        "/var/lib/cloudera-scm-agent"
+        "/usr/java"
+        "/usr/local/scala"
+        "/var/log/cloudera-scm-server"
+        "/dfs"
+        "/yarn"
+    )
+    
+    local total_size=0
+    for target in "${targets[@]}"; do
+        if [ -e "$target" ]; then
+            local size=$(du -sh "$target" 2>/dev/null | cut -f1)
+            echo "  [找到] $target ($size)"
+        fi
+    done
+    
+    # 检查运行的服务
+    echo ""
+    log_step "检查运行中的 CDH 服务..."
+    
+    local services_running=false
+    if systemctl is-active cloudera-scm-server >/dev/null 2>&1; then
+        echo "  [运行中] cloudera-scm-server"
+        services_running=true
+    fi
+    
+    if systemctl is-active mysqld >/dev/null 2>&1; then
+        echo "  [运行中] mysqld"
+        services_running=true
+    fi
+    
+    if [ "$services_running" = true ]; then
+        log_warning "检测到 CDH 服务正在运行，删除时会先停止"
+    else
+        log_success "没有检测到运行中的 CDH 服务"
+    fi
+    
+    echo ""
+}
+
+# ==========================================
 # 确认函数
 # ==========================================
 confirm_delete() {
@@ -307,6 +370,9 @@ main() {
     echo "作者: RaynLiu"
     echo "日期: $(date '+%Y-%m-%d %H:%M:%S')"
     echo ""
+    
+    # 删除前安全检查
+    pre_delete_check
     
     # 确认删除
     confirm_delete

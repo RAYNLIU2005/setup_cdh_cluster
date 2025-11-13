@@ -363,6 +363,204 @@ confirm() {
 }
 
 # ==========================================
+# 错误处理和容错函数
+# ==========================================
+
+# 捕获错误并退出
+die() {
+    local message="$1"
+    local exit_code="${2:-1}"
+    
+    print_error_box "$message"
+    exit "$exit_code"
+}
+
+# 检查命令是否成功
+check_command() {
+    local command="$1"
+    local error_message="${2:-命令执行失败: $command}"
+    
+    if ! $command; then
+        die "$error_message" 1
+    fi
+}
+
+# 安全执行命令（带重试）
+safe_exec() {
+    local command="$1"
+    local max_retries="${2:-3}"
+    local retry_delay="${3:-2}"
+    local attempt=1
+    
+    while [ $attempt -le $max_retries ]; do
+        if eval "$command"; then
+            return 0
+        fi
+        
+        if [ $attempt -lt $max_retries ]; then
+            log_warning "命令失败，${retry_delay}秒后重试... (尝试 $attempt/$max_retries)"
+            sleep "$retry_delay"
+        fi
+        
+        attempt=$((attempt + 1))
+    done
+    
+    log_error "命令执行失败（已重试 $max_retries 次）: $command"
+    return 1
+}
+
+# 检查文件是否存在
+check_file_exists() {
+    local file="$1"
+    local error_message="${2:-文件不存在: $file}"
+    
+    if [ ! -f "$file" ]; then
+        die "$error_message" 2
+    fi
+}
+
+# 检查目录是否存在
+check_dir_exists() {
+    local dir="$1"
+    local error_message="${2:-目录不存在: $dir}"
+    
+    if [ ! -d "$dir" ]; then
+        die "$error_message" 2
+    fi
+}
+
+# 检查服务是否运行
+check_service_running() {
+    local service="$1"
+    
+    if systemctl is-active "$service" >/dev/null 2>&1; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# 等待服务启动
+wait_for_service() {
+    local service="$1"
+    local timeout="${2:-60}"
+    local interval="${3:-2}"
+    local elapsed=0
+    
+    log_step "等待服务 $service 启动..."
+    
+    while [ $elapsed -lt $timeout ]; do
+        if check_service_running "$service"; then
+            log_success "服务 $service 已启动"
+            return 0
+        fi
+        
+        sleep "$interval"
+        elapsed=$((elapsed + interval))
+        printf "."
+    done
+    
+    echo ""
+    log_error "服务 $service 启动超时（${timeout}秒）"
+    return 1
+}
+
+# 检查端口是否监听
+check_port_listening() {
+    local port="$1"
+    local host="${2:-localhost}"
+    
+    if command -v nc >/dev/null 2>&1; then
+        nc -z "$host" "$port" >/dev/null 2>&1
+    elif command -v telnet >/dev/null 2>&1; then
+        timeout 1 telnet "$host" "$port" >/dev/null 2>&1
+    else
+        netstat -tuln | grep -q ":${port} "
+    fi
+}
+
+# 等待端口监听
+wait_for_port() {
+    local port="$1"
+    local host="${2:-localhost}"
+    local timeout="${3:-60}"
+    local interval="${4:-2}"
+    local elapsed=0
+    
+    log_step "等待端口 $port 监听..."
+    
+    while [ $elapsed -lt $timeout ]; do
+        if check_port_listening "$port" "$host"; then
+            log_success "端口 $port 已监听"
+            return 0
+        fi
+        
+        sleep "$interval"
+        elapsed=$((elapsed + interval))
+        printf "."
+    done
+    
+    echo ""
+    log_error "端口 $port 监听超时（${timeout}秒）"
+    return 1
+}
+
+# 检查磁盘空间
+check_disk_space() {
+    local path="$1"
+    local required_gb="${2:-10}"
+    
+    local available_kb=$(df -k "$path" | tail -1 | awk '{print $4}')
+    local available_gb=$((available_kb / 1024 / 1024))
+    
+    if [ $available_gb -lt $required_gb ]; then
+        log_error "磁盘空间不足: $path (可用: ${available_gb}GB, 需要: ${required_gb}GB)"
+        return 1
+    else
+        log_success "磁盘空间充足: $path (可用: ${available_gb}GB)"
+        return 0
+    fi
+}
+
+# 创建备份
+create_backup() {
+    local file="$1"
+    local backup_dir="${2:-/tmp/backups}"
+    
+    if [ -f "$file" ]; then
+        mkdir -p "$backup_dir"
+        local backup_file="$backup_dir/$(basename "$file").bak.$(date +%Y%m%d_%H%M%S)"
+        cp "$file" "$backup_file"
+        log_success "已备份: $file -> $backup_file"
+        return 0
+    else
+        log_warning "文件不存在，无需备份: $file"
+        return 1
+    fi
+}
+
+# 安全删除（带确认）
+safe_remove() {
+    local target="$1"
+    local force="${2:-false}"
+    
+    if [ ! -e "$target" ]; then
+        log_warning "目标不存在: $target"
+        return 0
+    fi
+    
+    if [ "$force" = "false" ]; then
+        if ! confirm "确认删除 $target？"; then
+            log_info "用户取消删除"
+            return 1
+        fi
+    fi
+    
+    rm -rf "$target"
+    log_success "已删除: $target"
+}
+
+# ==========================================
 # 使用示例
 # ==========================================
 

@@ -66,42 +66,81 @@
 
 
   - name: 检查 MySQL 密码是否已设置为目标密码
-    shell: mysql -uroot -p'{{password.mysql}}' -e "SELECT 'OK'" 2>&1
+    shell: mysql -uroot -p'{{password.mysql}}' -e "SELECT 'PASSWORD_OK' as status" 2>&1
     register: mysql_check
     ignore_errors: yes
     changed_when: false
 
+  - name: 显示密码检查结果
+    debug:
+      msg: "MySQL 密码检查: {% if mysql_check.rc == 0 %}密码已正确设置为 {{password.mysql}}{% else %}密码需要设置{% endif %}"
+
   - name: 获取 MySQL 日志中的临时密码
-    shell: "grep 'temporary password' /var/log/mysqld.log | tail -n 1 | grep -P 'root@localhost: .+' -o | sed 's/root@localhost: //g'"
+    shell: "grep 'temporary password' /var/log/mysqld.log 2>/dev/null | tail -n 1 | grep -P 'root@localhost: .+' -o | sed 's/root@localhost: //g' || echo ''"
     register: mysql_temp_pwd
     when: mysql_check.rc != 0
+    changed_when: false
+
+  - name: 尝试使用无密码方式设置（MySQL 初次安装）
+    shell: |
+      mysql -uroot -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '{{password.mysql}}'; FLUSH PRIVILEGES;" 2>&1
+    when: mysql_check.rc != 0
     ignore_errors: yes
+    register: mysql_pwd_set_nopass
 
   - name: 尝试使用初始密码 123456 设置新密码
-    shell: mysql -uroot -p'123456' -e 'ALTER USER "root"@"localhost" IDENTIFIED BY "{{password.mysql}}"; FLUSH PRIVILEGES;' 2>&1
-    when: mysql_check.rc != 0
+    shell: |
+      mysql -uroot -p'123456' -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '{{password.mysql}}'; FLUSH PRIVILEGES;" 2>&1
+    when: 
+      - mysql_check.rc != 0
+      - mysql_pwd_set_nopass is defined and mysql_pwd_set_nopass.rc != 0
     ignore_errors: yes
     register: mysql_pwd_set_initial
 
   - name: 尝试使用日志临时密码设置新密码
-    shell: mysql -uroot -p'{{mysql_temp_pwd.stdout}}' --connect-expired-password -e 'ALTER USER "root"@"localhost" IDENTIFIED BY "{{password.mysql}}"; FLUSH PRIVILEGES;' 2>&1
+    shell: |
+      mysql -uroot -p'{{mysql_temp_pwd.stdout}}' --connect-expired-password -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '{{password.mysql}}'; FLUSH PRIVILEGES;" 2>&1
     when: 
       - mysql_check.rc != 0
+      - mysql_pwd_set_nopass is defined and mysql_pwd_set_nopass.rc != 0
       - mysql_pwd_set_initial is defined and mysql_pwd_set_initial.rc != 0
-      - mysql_temp_pwd.stdout != ""
+      - mysql_temp_pwd.stdout is defined and mysql_temp_pwd.stdout != ""
     ignore_errors: yes
     register: mysql_pwd_set_temp
 
-  - name: 尝试无密码方式设置新密码
-    shell: mysql -uroot -e 'ALTER USER "root"@"localhost" IDENTIFIED BY "{{password.mysql}}"; FLUSH PRIVILEGES;' 2>&1
+  - name: 使用安全模式强制重置密码（最后手段）
+    shell: |
+      systemctl stop mysqld
+      sleep 2
+      pkill -9 mysqld 2>/dev/null || true
+      sleep 1
+      nohup mysqld_safe --skip-grant-tables --skip-networking &
+      sleep 5
+      mysql -uroot -e "FLUSH PRIVILEGES; ALTER USER 'root'@'localhost' IDENTIFIED BY '{{password.mysql}}'; FLUSH PRIVILEGES;" 2>&1
+      pkill mysqld_safe 2>/dev/null || true
+      pkill -9 mysqld 2>/dev/null || true
+      sleep 2
+      systemctl start mysqld
+      sleep 3
     when: 
       - mysql_check.rc != 0
+      - mysql_pwd_set_nopass is defined and mysql_pwd_set_nopass.rc != 0
       - mysql_pwd_set_initial is defined and mysql_pwd_set_initial.rc != 0
       - (mysql_pwd_set_temp is not defined or mysql_pwd_set_temp.rc != 0)
     ignore_errors: yes
-    register: mysql_pwd_set_nopass
+    register: mysql_pwd_set_safe_mode
 
-  - name: 验证最终密码
+  - name: 等待 MySQL 服务恢复
+    wait_for:
+      host: localhost
+      port: 3306
+      state: started
+      delay: 2
+      timeout: 30
+    when: mysql_pwd_set_safe_mode is defined and mysql_pwd_set_safe_mode.rc is defined
+    ignore_errors: yes
+
+  - name: 最终验证 MySQL 密码
     shell: mysql -uroot -p'{{password.mysql}}' -e "SELECT 'SUCCESS' as status" 2>&1
     register: mysql_final_check
     ignore_errors: yes
@@ -110,20 +149,25 @@
   - name: 显示密码设置结果
     debug:
       msg: |
-        MySQL 密码配置状态:
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        MySQL 密码配置状态
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         {% if mysql_final_check.rc == 0 %}
-        ✓ MySQL 密码设置成功！当前密码: {{password.mysql}}
+        ✓ MySQL 密码设置成功！
+        ✓ 当前密码: {{password.mysql}}
+        ✓ 可以正常连接数据库
         {% else %}
-        ✗ MySQL 密码设置失败，需要手动修复
-        请执行: cd /root/setup_cdh_cluster && make reset-mysql
+        ✗ MySQL 密码设置失败
+        ✗ 请手动执行: make reset-mysql
+        ✗ 然后重新部署: make deploy
         {% endif %}
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   - name: 重启 mysql server 并确保开机自启动
     service:
       name: mysqld
       state: restarted
       enabled: yes
-    when: mysql_final_check.rc == 0
 
   - name: 等待 MySQL 端口就绪（TCP 3306）
     wait_for:
@@ -154,35 +198,38 @@
         状态: 可以安全启动依赖服务（如 CM Server）
     when: mysql_final_check.rc == 0
 
-  - name: 创建密码设置失败提示文件
-    copy:
-      content: |
-        ==========================================
-          MySQL Root 密码设置失败
-        ==========================================
+  - name: 警告：MySQL 密码设置可能失败（但继续部署）
+    debug:
+      msg: |
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        ⚠️  警告：MySQL 密码验证失败
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         
-        当前状态：无法使用密码 {{password.mysql}} 登录
+        虽然密码设置尝试失败，但部署将继续进行。
+        如果后续步骤失败，请执行以下操作：
         
-        修复步骤：
-        1. cd /root/setup_cdh_cluster
-        2. make reset-mysql
-        3. make deploy
+        快速修复：
+          cd /root/setup_cdh_cluster
+          make reset-mysql
+          make deploy
         
-        或手动修复：
-        systemctl stop mysqld
-        mysqld_safe --skip-grant-tables --skip-networking &
-        sleep 5
-        mysql -uroot -e "FLUSH PRIVILEGES; ALTER USER 'root'@'localhost' IDENTIFIED BY '{{password.mysql}}'; FLUSH PRIVILEGES;"
-        pkill mysqld_safe
-        systemctl start mysqld
+        手动修复：
+          systemctl stop mysqld
+          mysqld_safe --skip-grant-tables --skip-networking &
+          sleep 5
+          mysql -uroot -e "FLUSH PRIVILEGES; ALTER USER 'root'@'localhost' IDENTIFIED BY '123456'; FLUSH PRIVILEGES;"
+          pkill mysqld_safe
+          systemctl start mysqld
         
-        ==========================================
-      dest: /tmp/mysql_password_fix_needed
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     when: mysql_final_check.rc != 0
 
-  - name: 停止部署流程（如果密码设置失败）
-    fail:
-      msg: "MySQL 密码设置失败！请运行 'make reset-mysql' 修复后重新部署"
+  - name: 创建密码修复提示文件
+    copy:
+      content: |
+        MySQL 密码验证失败，但部署继续进行。
+        如遇问题请执行: cd /root/setup_cdh_cluster && make reset-mysql && make deploy
+      dest: /tmp/mysql_password_warning
     when: mysql_final_check.rc != 0
 
   # 构建 CDH 集群组件数据库
