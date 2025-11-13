@@ -83,14 +83,24 @@
 
   - name: 尝试使用无密码方式设置（MySQL 初次安装）
     shell: |
-      mysql -uroot -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '{{password.mysql}}'; FLUSH PRIVILEGES;" 2>&1
+      mysql -uroot <<EOF 2>&1
+      SET GLOBAL validate_password_policy=LOW;
+      SET GLOBAL validate_password_length=1;
+      ALTER USER 'root'@'localhost' IDENTIFIED BY '{{password.mysql}}';
+      FLUSH PRIVILEGES;
+      EOF
     when: mysql_check.rc != 0
     ignore_errors: yes
     register: mysql_pwd_set_nopass
 
   - name: 尝试使用初始密码 123456 设置新密码
     shell: |
-      mysql -uroot -p'123456' -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '{{password.mysql}}'; FLUSH PRIVILEGES;" 2>&1
+      mysql -uroot -p'123456' <<EOF 2>&1
+      SET GLOBAL validate_password_policy=LOW;
+      SET GLOBAL validate_password_length=1;
+      ALTER USER 'root'@'localhost' IDENTIFIED BY '{{password.mysql}}';
+      FLUSH PRIVILEGES;
+      EOF
     when: 
       - mysql_check.rc != 0
       - mysql_pwd_set_nopass is defined and mysql_pwd_set_nopass.rc != 0
@@ -99,7 +109,12 @@
 
   - name: 尝试使用日志临时密码设置新密码
     shell: |
-      mysql -uroot -p'{{mysql_temp_pwd.stdout}}' --connect-expired-password -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '{{password.mysql}}'; FLUSH PRIVILEGES;" 2>&1
+      mysql -uroot -p'{{mysql_temp_pwd.stdout}}' --connect-expired-password <<EOF 2>&1
+      SET GLOBAL validate_password_policy=LOW;
+      SET GLOBAL validate_password_length=1;
+      ALTER USER 'root'@'localhost' IDENTIFIED BY '{{password.mysql}}';
+      FLUSH PRIVILEGES;
+      EOF
     when: 
       - mysql_check.rc != 0
       - mysql_pwd_set_nopass is defined and mysql_pwd_set_nopass.rc != 0
@@ -109,36 +124,79 @@
     register: mysql_pwd_set_temp
 
   - name: 使用安全模式强制重置密码（最后手段）
-    shell: |
-      systemctl stop mysqld
-      sleep 2
-      pkill -9 mysqld 2>/dev/null || true
-      sleep 1
-      nohup mysqld_safe --skip-grant-tables --skip-networking &
-      sleep 5
-      mysql -uroot -e "FLUSH PRIVILEGES; ALTER USER 'root'@'localhost' IDENTIFIED BY '{{password.mysql}}'; FLUSH PRIVILEGES;" 2>&1
-      pkill mysqld_safe 2>/dev/null || true
-      pkill -9 mysqld 2>/dev/null || true
-      sleep 2
-      systemctl start mysqld
-      sleep 3
+    block:
+      - name: 停止 MySQL 服务
+        systemd:
+          name: mysqld
+          state: stopped
+        
+      - name: 清理残留进程
+        shell: pkill -9 mysqld 2>/dev/null || true
+        
+      - name: 等待进程完全停止
+        pause:
+          seconds: 3
+          
+      - name: 启动安全模式
+        shell: |
+          mysqld_safe --skip-grant-tables --skip-networking >/dev/null 2>&1 &
+          echo $! > /tmp/mysqld_safe.pid
+        async: 10
+        poll: 0
+        
+      - name: 等待 MySQL 安全模式启动
+        pause:
+          seconds: 8
+          
+      - name: 验证 MySQL 已启动
+        shell: mysqladmin ping 2>/dev/null
+        register: mysql_ping
+        retries: 10
+        delay: 1
+        until: mysql_ping.rc == 0
+        ignore_errors: yes
+        
+      - name: 重置密码
+        shell: |
+          mysql -uroot <<EOF
+          FLUSH PRIVILEGES;
+          ALTER USER 'root'@'localhost' IDENTIFIED BY '{{password.mysql}}';
+          FLUSH PRIVILEGES;
+          EOF
+        register: reset_result
+        
+      - name: 停止安全模式
+        shell: |
+          if [ -f /tmp/mysqld_safe.pid ]; then
+            kill $(cat /tmp/mysqld_safe.pid) 2>/dev/null || true
+            rm -f /tmp/mysqld_safe.pid
+          fi
+          pkill -9 mysqld_safe 2>/dev/null || true
+          pkill -9 mysqld 2>/dev/null || true
+          
+      - name: 等待进程完全停止
+        pause:
+          seconds: 3
+          
+      - name: 正常启动 MySQL
+        systemd:
+          name: mysqld
+          state: started
+          
+      - name: 等待 MySQL 正常启动
+        wait_for:
+          host: localhost
+          port: 3306
+          state: started
+          delay: 3
+          timeout: 30
+    
     when: 
       - mysql_check.rc != 0
       - mysql_pwd_set_nopass is defined and mysql_pwd_set_nopass.rc != 0
       - mysql_pwd_set_initial is defined and mysql_pwd_set_initial.rc != 0
       - (mysql_pwd_set_temp is not defined or mysql_pwd_set_temp.rc != 0)
-    ignore_errors: yes
-    register: mysql_pwd_set_safe_mode
-
-  - name: 等待 MySQL 服务恢复
-    wait_for:
-      host: localhost
-      port: 3306
-      state: started
-      delay: 2
-      timeout: 30
-    when: mysql_pwd_set_safe_mode is defined and mysql_pwd_set_safe_mode.rc is defined
-    ignore_errors: yes
+    ignore_errors: no
 
   - name: 最终验证 MySQL 密码
     shell: mysql -uroot -p'{{password.mysql}}' -e "SELECT 'SUCCESS' as status" 2>&1
@@ -250,7 +308,7 @@
 #        - test
 #      state: absent
 
-  # 构建 CDH 集群组件数据库
+  # 构建 CDH 集群组件数据库（仅在密码验证成功时执行）
   - name: 创建 scm 数据库
     mysql_db:
       login_user: root
@@ -258,6 +316,7 @@
       name: scm
       encoding: utf8
       state: present
+    when: mysql_final_check.rc == 0
 
   - name: 创建 amon 数据库
     mysql_db:
@@ -266,6 +325,7 @@
       name: amon
       encoding: utf8
       state: present
+    when: mysql_final_check.rc == 0
 
   - name: 创建 rman 数据库
     mysql_db:
@@ -274,6 +334,7 @@
       name: rman
       encoding: utf8
       state: present
+    when: mysql_final_check.rc == 0
 
   - name: 创建 hive 数据库
     mysql_db:
@@ -282,6 +343,7 @@
       name: hive
       encoding: utf8
       state: present
+    when: mysql_final_check.rc == 0
 
   - name: 创建 sentry 数据库
     mysql_db:
@@ -290,6 +352,7 @@
       name: sentry
       encoding: utf8
       state: present
+    when: mysql_final_check.rc == 0
 
   - name: 创建 nav 数据库
     mysql_db:
@@ -298,6 +361,7 @@
       name: nav
       encoding: utf8
       state: present
+    when: mysql_final_check.rc == 0
 
   - name: 创建 navms 数据库
     mysql_db:
@@ -306,6 +370,7 @@
       name: navms
       encoding: utf8
       state: present
+    when: mysql_final_check.rc == 0
 
   - name: 创建 oozie 数据库
     mysql_db:
@@ -314,6 +379,7 @@
       name: oozie
       encoding: utf8
       state: present
+    when: mysql_final_check.rc == 0
 
   - name: 创建 hue 数据库
     mysql_db:
@@ -322,8 +388,9 @@
       name: hue
       encoding: utf8
       state: present
+    when: mysql_final_check.rc == 0
 
-  # 改密码设置用户权限
+  # 设置用户权限（仅在密码验证成功时执行）
   - name: 开放 scm 库下所有表的权限给 scm 用户
     mysql_user:
       login_user: root
@@ -333,6 +400,7 @@
       priv: 'scm.*:ALL'
       host: '%'
       state: present
+    when: mysql_final_check.rc == 0
 
   - name: 开放 amon 库下所有表的权限给 amon 用户
     mysql_user:
@@ -343,6 +411,7 @@
       priv: 'amon.*:ALL'
       host: '%'
       state: present
+    when: mysql_final_check.rc == 0
 
   - name: 开放 rman 库下所有表的权限给 rman 用户
     mysql_user:
@@ -353,6 +422,7 @@
       priv: 'rman.*:ALL'
       host: '%'
       state: present
+    when: mysql_final_check.rc == 0
 
   - name: 开放 hive 库下所有表的权限给 hive 用户
     mysql_user:
@@ -363,6 +433,7 @@
       priv: 'hive.*:ALL'
       host: '%'
       state: present
+    when: mysql_final_check.rc == 0
 
   - name: 开放 sentry 库下所有表的权限给 sentry 用户
     mysql_user:
@@ -373,6 +444,7 @@
       priv: 'sentry.*:ALL'
       host: '%'
       state: present
+    when: mysql_final_check.rc == 0
 
   - name: 开放 nav 库下所有表的权限给 nav 用户
     mysql_user:
@@ -383,6 +455,7 @@
       priv: 'nav.*:ALL'
       host: '%'
       state: present
+    when: mysql_final_check.rc == 0
 
   - name: 开放 navms 库下所有表的权限给 navms 用户
     mysql_user:
@@ -393,6 +466,7 @@
       priv: 'navms.*:ALL'
       host: '%'
       state: present
+    when: mysql_final_check.rc == 0
 
   - name: 开放 oozie 库下所有表的权限给 oozie 用户
     mysql_user:
@@ -403,7 +477,7 @@
       priv: 'oozie.*:ALL'
       host: '%'
       state: present
-
+    when: mysql_final_check.rc == 0
 
   - name: 开放 hue 库下所有表的权限给 hue 用户
     mysql_user:
@@ -414,6 +488,19 @@
       priv: 'hue.*:ALL'
       host: '%'
       state: present
+    when: mysql_final_check.rc == 0
+  
+  # MySQL 密码失败时的提示任务
+  - name: 显示数据库跳过提示
+    debug:
+      msg: |
+        ⚠️  由于 MySQL 密码验证失败，已跳过数据库创建和用户权限设置
+        
+        请运行以下命令修复：
+          cd /root/setup_cdh_cluster
+          make reset-mysql
+          make deploy
+    when: mysql_final_check.rc != 0
 
 
   # 安全配置 mysql
