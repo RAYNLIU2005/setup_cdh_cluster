@@ -2,7 +2,7 @@
 
 # ☕ CDH 集群自动化部署系统
 
-<h3>Only by one cup of coffee time<br/>You will build yourself CDH clusters!</h3>
+<h3>Only by one cup of coffee time<br/>You will build your CDH clusters!</h3>
 
 [![Version](https://img.shields.io/badge/version-2.2-blue.svg)](https://github.com/RaynLiu/setup_cdh_cluster)
 [![CDH](https://img.shields.io/badge/CDH-6.2.0-orange.svg)](https://www.cloudera.com/)
